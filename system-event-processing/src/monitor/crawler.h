@@ -37,30 +37,34 @@ public:
 class Crawler
 {
 public:
-    Crawler(const std::string &name);
+    Crawler(const std::string &name="defaultCrawler");
 
     virtual ~Crawler();
-    /*
+    /*!
      * Get the name of the crawler.
      */
     std::string GetCrawlerName() const;
-    /*
+    /*!
      * Get the type of the meta-data.
      */
     std::string GetStreamType() const;
-    /*
+    /*!
      * Get currently observed meta-data
      */
     ObserveData GetData();
-    /*
+    /*!
      * Crawl the meta-data.
      */
     virtual void FetchData() = 0;
 
+    /*!
+     * Crawl the stable meta-data.
+     */
+
 protected:
     std::string name_;
     std::string type_;
-    ObserveData cur_data;
+    ObserveData curData_;
     pthread_rwlock_t rwlock_;
 };
 
@@ -85,8 +89,8 @@ public:
     void FetchData();
 
 private:
-    static std::string stat_file_;
-    int cpu_index_;
+    static std::string statFile_;
+    int cpuIndex_;
     Mode mode_;
 };
 
@@ -105,7 +109,7 @@ public:
     void FetchData();
 
 private:
-    static std::string mem_stat_file_;
+    static std::string memStatFile_;
 };
 
 /*
@@ -122,7 +126,7 @@ public:
     void FetchData();
 
 private:
-    static std::string net_stat_file_;
+    static std::string netStatFile_;
 };
 
 /*
@@ -139,7 +143,7 @@ public:
     void FetchData();
 
 private:
-    static std::string disk_stat_pipe;
+    static std::string diskStatPipe_;
 };
 
 };
