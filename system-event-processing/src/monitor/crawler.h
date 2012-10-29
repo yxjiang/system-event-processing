@@ -12,6 +12,9 @@
 #include <map>
 #include <sstream>
 #include <boost/shared_ptr.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include "../common/common.h"
 
 
@@ -37,7 +40,7 @@ public:
 class Crawler
 {
 public:
-    Crawler(const std::string &name="defaultCrawler");
+    Crawler();
 
     virtual ~Crawler();
     /*!
@@ -76,11 +79,11 @@ class CPUCrawler : public Crawler
 public:
     enum Mode
     {
-        TOTAL_CPU = 0,
-        SEPARATE_CPU = 1
+        TOTAL_CPU = 0,     //   get the overall stat
+        SEPARATE_CPU = 1   //   stat each CPU separately
     };
 
-    CPUCrawler(const std::string &name, Mode mode);
+    CPUCrawler(Mode mode);
     virtual ~CPUCrawler();
 
     /*
@@ -101,7 +104,7 @@ private:
 class MemCrawler : public Crawler
 {
 public:
-    MemCrawler(const std::string &name);
+    MemCrawler();
     virtual ~MemCrawler();
     /*
      * Fetch the Memory usage of the target system.
@@ -118,7 +121,7 @@ private:
 class NetCrawler : public Crawler
 {
 public:
-    NetCrawler(const std::string &name);
+    NetCrawler();
     virtual ~NetCrawler();
     /*
      * Fetch the Network usage of the target system.
@@ -135,7 +138,7 @@ private:
 class DiskCrawler : public Crawler
 {
 public:
-    DiskCrawler(const std::string &name);
+    DiskCrawler();
     virtual ~DiskCrawler();
     /*
      * Fetch the Disk usage of the target system.

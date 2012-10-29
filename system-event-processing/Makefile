@@ -22,6 +22,9 @@ MANAGER_OBJ := manager.o
 COLLECTOR_SRC := src/collector/collector.cc
 COLLECTOR_OBJ := collector.o
 
+crawler: $(CRAWLER_SRC) $(COMMON_SRC)
+	g++ $(INCLUDE) $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)
+	g++ $(INCLUDE) $(FLAG) -c $(CRAWLER_SRC) -o $(CRAWLER_OBJ)
 
 monitor: $(CRAWLER_SRC) $(MANAGER_SRC) $(COMMON_SRC)
 	g++ $(INCLUDE) $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)

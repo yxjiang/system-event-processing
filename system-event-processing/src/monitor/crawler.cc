@@ -12,9 +12,12 @@ namespace event
 
 using namespace std;
 
-Crawler::Crawler(const string &name) :
-    name_(name)
+Crawler::Crawler()
 {
+  boost::uuids::uuid uuid = boost::uuids::random_generator()();
+  stringstream ss;
+  ss << uuid;
+  this->name_ = ss.str();
   pthread_rwlock_init(&rwlock_, NULL);
 }
 
@@ -43,8 +46,7 @@ ObserveData Crawler::GetData()
 
 std::string CPUCrawler::statFile_ = "/proc/stat";
 
-CPUCrawler::CPUCrawler(const string &name, Mode mode) :
-    Crawler(name), mode_(mode)
+CPUCrawler::CPUCrawler(Mode mode) : Crawler(), mode_(mode)
 {
 }
 
@@ -98,7 +100,8 @@ void CPUCrawler::FetchData()
     curData_.properties_ = shared_map;
     pthread_rwlock_unlock(&rwlock_);
     //	cur_data.value = user_time;
-  } else
+  }
+  else
   {
     unsigned long *user_time, *nice_time, *sys_time, *idle_time, *iowait_time,
         *int_time, *softint_time;
@@ -203,8 +206,7 @@ string MemCrawler::memStatFile_ = "/proc/meminfo";
 /*
  * Create a new crawler to crawl the memory usage of the target system.
  */
-MemCrawler::MemCrawler(const string &name) :
-    Crawler(name)
+MemCrawler::MemCrawler() : Crawler()
 {
 }
 
@@ -238,8 +240,7 @@ void MemCrawler::FetchData()
 
 string NetCrawler::netStatFile_ = "/proc/net/dev";
 
-NetCrawler::NetCrawler(const string &name) :
-    Crawler(name)
+NetCrawler::NetCrawler() : Crawler()
 {
 }
 
@@ -306,8 +307,7 @@ void NetCrawler::FetchData()
 
 string DiskCrawler::diskStatPipe_ = "df -m";
 
-DiskCrawler::DiskCrawler(const string &name) :
-    Crawler(name)
+DiskCrawler::DiskCrawler() : Crawler()
 {
 }
 
