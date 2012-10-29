@@ -1,0 +1,9 @@
+package utility;
+
+message MetaData {
+  required string monitorName = 1;
+  required string jsonString = 2;
+}
+
+
+
