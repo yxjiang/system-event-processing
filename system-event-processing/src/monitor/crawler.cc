@@ -19,6 +19,8 @@ Crawler::Crawler()
   ss << uuid;
   this->name_ = ss.str();
   pthread_rwlock_init(&rwlock_, NULL);
+  this->SetCrawlerType();
+  this->FetchStableMetaData();
 }
 
 Crawler::~Crawler()
@@ -36,6 +38,11 @@ string Crawler::GetStreamType() const
   return type_;
 }
 
+std::map<std::string, std::string> Crawler::GetStableData() const
+{
+  return stableMetaData_;       // no lock is needed
+}
+
 ObserveData Crawler::GetData()
 {
   pthread_rwlock_rdlock(&rwlock_);
@@ -44,21 +51,25 @@ ObserveData Crawler::GetData()
   return data;
 }
 
+
+
+
+
+
+
 std::string CPUCrawler::statFile_ = "/proc/stat";
 
 CPUCrawler::CPUCrawler(Mode mode) : Crawler(), mode_(mode)
-{
-}
+{}
 
 CPUCrawler::~CPUCrawler()
-{
-}
+{}
 
 /*
  * Fetch the CPU usage from the "/proc/stat" file.
  * To keep in high efficiency, we allocate memory from stack.
  */
-void CPUCrawler::FetchData()
+void CPUCrawler::FetchMetaData()
 {
   FILE *fp = fopen(statFile_.c_str(), "r");
   char cpu_id[8];	//	just for place order to hold the CPU ID
@@ -91,8 +102,7 @@ void CPUCrawler::FetchData()
       total_period = used_period;
     time(&(curData_.timestamp));
 
-    boost::shared_ptr<std::map<string, string> > shared_map(
-        new map<string, string>);
+    boost::shared_ptr<std::map<string, string> > shared_map(new map<string, string>);
     stringstream ss;
     ss << static_cast<float>(used_period) / (total_period);
     shared_map->insert(make_pair<string, string>("cpu-usage-total", ss.str()));
@@ -202,178 +212,213 @@ void CPUCrawler::FetchData()
   ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
 }
 
-string MemCrawler::memStatFile_ = "/proc/meminfo";
-/*
- * Create a new crawler to crawl the memory usage of the target system.
- */
-MemCrawler::MemCrawler() : Crawler()
+void CPUCrawler::SetCrawlerType()
 {
+  this->type_ = "CPU-Utilization";
 }
 
-MemCrawler::~MemCrawler()
+void CPUCrawler::FetchStableMetaData()
 {
+  int numOfCores = GetCPUCount();
+  char numOfCoresStr[8];
+  sprintf(numOfCoresStr, "%d", numOfCores);
+  stableMetaData_.insert(make_pair<string, string>("numberOfCores", numOfCoresStr));
+
+  ifstream fin("/proc/cpuinfo");
+  string line;
+  getline(fin, line);   //  skip first line
+  getline(fin, line);
+  vector<string> vendorIDKeyValue;
+  Split(line, ':', vendorIDKeyValue, true);
+  stableMetaData_.insert(make_pair<string, string>("vendorName", vendorIDKeyValue[1]));
+  getline(fin, line);
+  getline(fin, line);
+  getline(fin, line);
+  vector<string> modelNameKeyValue;
+  Split(line, ':', modelNameKeyValue, true);
+  stableMetaData_.insert(make_pair<string, string>("vendorName", modelNameKeyValue[1]));
+  getline(fin, line);
+  getline(fin, line);
+  getline(fin, line);
+  vector<string> CPUMHz;
+  Split(line, ':', CPUMHz, true);
+  stableMetaData_.insert(make_pair<string, string>("CPUMHz", CPUMHz[1]));
+
+  fin.close();
 }
 
-/*
- * Get the general memory usage
- */
-void MemCrawler::FetchData()
-{
-  FILE *fp = fopen(memStatFile_.c_str(), "r");
-
-  time(&(curData_.timestamp));
-  boost::shared_ptr< std::map< string, string> > shared_map(new map<string, string>);
-  char buf[128];
-  char value[16];
-  char buf_kb[4];
-  for (int i = 0; i < 6; ++i)
-  {
-    fscanf(fp, "%s %s %s\n", buf, value, buf_kb);
-    shared_map->insert(make_pair<string, string>(buf, value));
-  }
-  pthread_rwlock_wrlock(&rwlock_);
-  curData_.properties_ = shared_map;
-  pthread_rwlock_unlock(&rwlock_);
-  fclose(fp);
-  ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
-}
-
-string NetCrawler::netStatFile_ = "/proc/net/dev";
-
-NetCrawler::NetCrawler() : Crawler()
-{
-}
-
-NetCrawler::~NetCrawler()
-{
-}
-
-/*
- * Get the general network usage.
- */
-void NetCrawler::FetchData()
-{
-  FILE *fp = fopen(netStatFile_.c_str(), "r");
-  char label[16];	//	labels lick lo: eth0: ppp0 etc.
-  long in_bytes[2], in_packets[2], in_errs[2], in_drop[2], in_fifo[2],
-      in_frame[2], in_compressed[2], in_multicast[2];
-  long out_bytes[2], out_packets[2], out_errs[2], out_drop[2], out_fifo[2],
-      out_colls[2], out_carrier[2], out_compressed[2];
-
-  char buf[256];
-  fgets(buf, 256, fp);	//	skip first line
-  fgets(buf, 256, fp);	//	skip second line
-  fgets(buf, 256, fp);	//	skip third line
-  fgets(buf, 256, fp);
-  sscanf(buf, "%s %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n",
-      label, &in_bytes[0], &in_packets[0], &in_errs[0], &in_drop[0],
-      &in_fifo[0], &in_frame[0], &in_compressed[0], &in_multicast[0],
-      &out_bytes[0], &out_packets[0], &out_errs[0], &out_drop[0], &out_fifo[0],
-      &out_colls[0], &out_carrier[0], &out_compressed[0]);
-
-  ThreadSleep(0, CRAWLER_SAMPLE_TIME_NANOSEC);
-
-  rewind(fp);
-  fgets(buf, 256, fp);	//	skip first line
-  fgets(buf, 256, fp);	//	skip second line
-  fgets(buf, 256, fp);	//	skip third line
-  fgets(buf, 256, fp);
-  sscanf(buf, "%s %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n",
-      label, &in_bytes[1], &in_packets[1], &in_errs[1], &in_drop[1],
-      &in_fifo[1], &in_frame[1], &in_compressed[1], &in_multicast[1],
-      &out_bytes[1], &out_packets[1], &out_errs[1], &out_drop[1], &out_fifo[1],
-      &out_colls[1], &out_carrier[1], &out_compressed[1]);
-  fclose(fp);
-
-  int multiply = 1000000000 / CRAWLER_SAMPLE_TIME_NANOSEC;
-//	int multiply = 2;
-  float recv_speed = static_cast<float>(in_bytes[1] - in_bytes[0]) / 1024
-      * multiply;
-  float send_speed = static_cast<float>(out_bytes[1] - out_bytes[0]) / 1024
-      * multiply;
-  stringstream ss;
-  boost::shared_ptr< std::map< string, string> > shared_map(new map<string, string>);
-  ss << recv_speed;
-  shared_map->insert(make_pair< string, string >("receive speed (KB):", ss.str()));
-  ss.str("");
-  ss << send_speed;
-  shared_map->insert(make_pair< string, string >("send speed (KB):", ss.str()));
-  pthread_rwlock_wrlock(&rwlock_);
-  curData_.properties_ = shared_map;
-  pthread_rwlock_unlock(&rwlock_);
-
-  ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
-}
-
-string DiskCrawler::diskStatPipe_ = "df -m";
-
-DiskCrawler::DiskCrawler() : Crawler()
-{
-}
-
-DiskCrawler::~DiskCrawler()
-{
-}
-
-void DiskCrawler::FetchData()
-{
-  FILE *fp;
-  if ((fp = popen(diskStatPipe_.c_str(), "r")) == NULL)
-  {
-    fprintf(stderr, "Open disk stat pipe failed.\n");
-    return;
-  }
-
-  boost::shared_ptr<std::map<string, string> > shared_map(
-      new map<string, string>);
-
-  char name[256];
-  char total[16];
-  char used[16];
-  char avail[16];
-  char prop[4];
-  char mount[256];
-  fgets(name, sizeof(name), fp);	//	skip first line
-  while (!feof(fp))
-  {
-    fscanf(fp, "%s %s %s %s %s %s\n", name, total, used, avail, prop, mount);
-    char disk_name[256];
-    bzero(disk_name, strlen(disk_name));
-    strcpy(disk_name, name);
-    strcat(disk_name, "=");
-    shared_map->insert(
-        make_pair<string, string>(strcat(disk_name, "disk-name:"), name));
-    bzero(disk_name, strlen(disk_name));
-    strcpy(disk_name, name);
-    strcat(disk_name, "=");
-    shared_map->insert(
-        make_pair<string, string>(strcat(disk_name, "total-size (MB):"),
-            total));
-    bzero(disk_name, strlen(disk_name));
-    strcpy(disk_name, name);
-    strcat(disk_name, "=");
-    shared_map->insert(make_pair<string, string>(strcat(disk_name, "used-size (MB):"), used));
-    bzero(disk_name, strlen(disk_name));
-    strcpy(disk_name, name);
-    strcat(disk_name, "=");
-    shared_map->insert(make_pair<string, string>(strcat(disk_name, "available-size (MB):"), avail));
-    bzero(disk_name, strlen(disk_name));
-    strcpy(disk_name, name);
-    strcat(disk_name, "=");
-    shared_map->insert(
-        make_pair<string, string>(strcat(disk_name, "used-proportion:"), prop));
-    bzero(disk_name, strlen(disk_name));
-    strcpy(disk_name, name);
-    strcat(disk_name, "=");
-    shared_map->insert(
-        make_pair<string, string>(strcat(disk_name, "mounted-on:"), mount));
-  }
-  fclose(fp);
-  pthread_rwlock_wrlock(&rwlock_);
-  curData_.properties_ = shared_map;
-  pthread_rwlock_unlock(&rwlock_);
-
-  ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
-}
+//string MemCrawler::memStatFile_ = "/proc/meminfo";
+///*
+// * Create a new crawler to crawl the memory usage of the target system.
+// */
+//MemCrawler::MemCrawler() : Crawler()
+//{
+//}
+//
+//MemCrawler::~MemCrawler()
+//{
+//}
+//
+///*
+// * Get the general memory usage
+// */
+//void MemCrawler::FetchMetaData()
+//{
+//  FILE *fp = fopen(memStatFile_.c_str(), "r");
+//
+//  time(&(curData_.timestamp));
+//  boost::shared_ptr< std::map< string, string> > shared_map(new map<string, string>);
+//  char buf[128];
+//  char value[16];
+//  char buf_kb[4];
+//  for (int i = 0; i < 6; ++i)
+//  {
+//    fscanf(fp, "%s %s %s\n", buf, value, buf_kb);
+//    shared_map->insert(make_pair<string, string>(buf, value));
+//  }
+//  pthread_rwlock_wrlock(&rwlock_);
+//  curData_.properties_ = shared_map;
+//  pthread_rwlock_unlock(&rwlock_);
+//  fclose(fp);
+//  ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
+//}
+//
+//string NetCrawler::netStatFile_ = "/proc/net/dev";
+//
+//NetCrawler::NetCrawler() : Crawler()
+//{
+//}
+//
+//NetCrawler::~NetCrawler()
+//{
+//}
+//
+///*
+// * Get the general network usage.
+// */
+//void NetCrawler::FetchMetaData()
+//{
+//  FILE *fp = fopen(netStatFile_.c_str(), "r");
+//  char label[16];	//	labels lick lo: eth0: ppp0 etc.
+//  long in_bytes[2], in_packets[2], in_errs[2], in_drop[2], in_fifo[2],
+//      in_frame[2], in_compressed[2], in_multicast[2];
+//  long out_bytes[2], out_packets[2], out_errs[2], out_drop[2], out_fifo[2],
+//      out_colls[2], out_carrier[2], out_compressed[2];
+//
+//  char buf[256];
+//  fgets(buf, 256, fp);	//	skip first line
+//  fgets(buf, 256, fp);	//	skip second line
+//  fgets(buf, 256, fp);	//	skip third line
+//  fgets(buf, 256, fp);
+//  sscanf(buf, "%s %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n",
+//      label, &in_bytes[0], &in_packets[0], &in_errs[0], &in_drop[0],
+//      &in_fifo[0], &in_frame[0], &in_compressed[0], &in_multicast[0],
+//      &out_bytes[0], &out_packets[0], &out_errs[0], &out_drop[0], &out_fifo[0],
+//      &out_colls[0], &out_carrier[0], &out_compressed[0]);
+//
+//  ThreadSleep(0, CRAWLER_SAMPLE_TIME_NANOSEC);
+//
+//  rewind(fp);
+//  fgets(buf, 256, fp);	//	skip first line
+//  fgets(buf, 256, fp);	//	skip second line
+//  fgets(buf, 256, fp);	//	skip third line
+//  fgets(buf, 256, fp);
+//  sscanf(buf, "%s %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n",
+//      label, &in_bytes[1], &in_packets[1], &in_errs[1], &in_drop[1],
+//      &in_fifo[1], &in_frame[1], &in_compressed[1], &in_multicast[1],
+//      &out_bytes[1], &out_packets[1], &out_errs[1], &out_drop[1], &out_fifo[1],
+//      &out_colls[1], &out_carrier[1], &out_compressed[1]);
+//  fclose(fp);
+//
+//  int multiply = 1000000000 / CRAWLER_SAMPLE_TIME_NANOSEC;
+////	int multiply = 2;
+//  float recv_speed = static_cast<float>(in_bytes[1] - in_bytes[0]) / 1024
+//      * multiply;
+//  float send_speed = static_cast<float>(out_bytes[1] - out_bytes[0]) / 1024
+//      * multiply;
+//  stringstream ss;
+//  boost::shared_ptr< std::map< string, string> > shared_map(new map<string, string>);
+//  ss << recv_speed;
+//  shared_map->insert(make_pair< string, string >("receive speed (KB):", ss.str()));
+//  ss.str("");
+//  ss << send_speed;
+//  shared_map->insert(make_pair< string, string >("send speed (KB):", ss.str()));
+//  pthread_rwlock_wrlock(&rwlock_);
+//  curData_.properties_ = shared_map;
+//  pthread_rwlock_unlock(&rwlock_);
+//
+//  ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
+//}
+//
+//string DiskCrawler::diskStatPipe_ = "df -m";
+//
+//DiskCrawler::DiskCrawler() : Crawler()
+//{
+//}
+//
+//DiskCrawler::~DiskCrawler()
+//{
+//}
+//
+//void DiskCrawler::FetchMetaData()
+//{
+//  FILE *fp;
+//  if ((fp = popen(diskStatPipe_.c_str(), "r")) == NULL)
+//  {
+//    fprintf(stderr, "Open disk stat pipe failed.\n");
+//    return;
+//  }
+//
+//  boost::shared_ptr<std::map<string, string> > shared_map(
+//      new map<string, string>);
+//
+//  char name[256];
+//  char total[16];
+//  char used[16];
+//  char avail[16];
+//  char prop[4];
+//  char mount[256];
+//  fgets(name, sizeof(name), fp);	//	skip first line
+//  while (!feof(fp))
+//  {
+//    fscanf(fp, "%s %s %s %s %s %s\n", name, total, used, avail, prop, mount);
+//    char disk_name[256];
+//    bzero(disk_name, strlen(disk_name));
+//    strcpy(disk_name, name);
+//    strcat(disk_name, "=");
+//    shared_map->insert(
+//        make_pair<string, string>(strcat(disk_name, "disk-name:"), name));
+//    bzero(disk_name, strlen(disk_name));
+//    strcpy(disk_name, name);
+//    strcat(disk_name, "=");
+//    shared_map->insert(
+//        make_pair<string, string>(strcat(disk_name, "total-size (MB):"),
+//            total));
+//    bzero(disk_name, strlen(disk_name));
+//    strcpy(disk_name, name);
+//    strcat(disk_name, "=");
+//    shared_map->insert(make_pair<string, string>(strcat(disk_name, "used-size (MB):"), used));
+//    bzero(disk_name, strlen(disk_name));
+//    strcpy(disk_name, name);
+//    strcat(disk_name, "=");
+//    shared_map->insert(make_pair<string, string>(strcat(disk_name, "available-size (MB):"), avail));
+//    bzero(disk_name, strlen(disk_name));
+//    strcpy(disk_name, name);
+//    strcat(disk_name, "=");
+//    shared_map->insert(
+//        make_pair<string, string>(strcat(disk_name, "used-proportion:"), prop));
+//    bzero(disk_name, strlen(disk_name));
+//    strcpy(disk_name, name);
+//    strcat(disk_name, "=");
+//    shared_map->insert(
+//        make_pair<string, string>(strcat(disk_name, "mounted-on:"), mount));
+//  }
+//  fclose(fp);
+//  pthread_rwlock_wrlock(&rwlock_);
+//  curData_.properties_ = shared_map;
+//  pthread_rwlock_unlock(&rwlock_);
+//
+//  ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
+//}
 
 };

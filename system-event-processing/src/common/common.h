@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <boost/algorithm/string.hpp>
 #include "string.h"
 
 namespace event {
@@ -65,7 +66,7 @@ inline void StringToFloat(const std::string &str, float &value) {
 /*!
  * Split the string by specified delim.
  */
-void Split(const std::string &s, char c, std::vector<std::string> & v);
+void Split(const std::string &s, char c, std::vector<std::string> & v, bool trim=false);
 
 /*!
  * Convert the number of bytes to KB.
