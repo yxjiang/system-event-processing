@@ -17,7 +17,14 @@ namespace event
   {
     pthread_rwlock_init(&rwlock_, NULL);
     //  start all crawlers
+    map<string, CrawlerStatus>::iterator itr = crawlers_.begin();
+    for (; itr != crawlers_.end(); ++itr)
+      pthread_create(&(itr->second.pid), NULL, _CrawlerService, (void*)(itr->second.crawler));
 
+    itr = crawlers_.begin();
+    for(; itr != crawlers_.end(); ++itr)
+      if(itr->second.pid > 0)
+        pthread_join(itr->second.pid, NULL);
     //  initialize communication service
 
     //  register to collectors by sending profile, including stable meta-data

@@ -102,6 +102,11 @@ private:
    */
   static const std::string _AssembleJson();
 
+  /*!
+   * The thread function entry for fetching data.
+   */
+  static void *_CrawlerService(void *arg);
+
 
 private:
   pthread_rwlock_t rwlock_;

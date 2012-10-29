@@ -9,15 +9,12 @@
 #define COLLECTOR_H_
 
 #include <boost/shared_ptr.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include "../common/common.h"
 
 namespace event
 {
-/*!
- * Use shared pointer to store the large property_tree object
- */
-typedef boost::shared_ptr<boost::property_tree::ptree> SharedPtree;
-
-
 
 
 }
