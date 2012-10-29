@@ -90,6 +90,12 @@ private:
    */
   static void *_PushData(void *arg);
 
+  /*!
+   * Generate the json and return it as text.
+   * The data should be compressed by protocol buffer.
+   */
+  static const std::string _AssembleJson();
+
 
 private:
   int monitoringRate_;
