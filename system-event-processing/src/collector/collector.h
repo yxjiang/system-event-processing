@@ -8,6 +8,8 @@
 #ifndef COLLECTOR_H_
 #define COLLECTOR_H_
 
+#include <boost/shared_ptr.hpp>
+
 namespace event
 {
 /*!

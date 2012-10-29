@@ -8,6 +8,9 @@
 #ifndef MONITOR_H_
 #define MONITOR_H_
 
+#include <pthread.h>
+#include "../common/common.h"
+
 namespace event
 {
 
@@ -22,7 +25,7 @@ typedef struct
 } CrawlerStatus;
 
 /*!
- * A monitor is deployed on a single node.
+ * A monitor is deployed on a single machine.
  * It periodically grabs the system utilization data and push it to collector.
  * Typically, a monitor contains a set of crawler plugins, each grab a certain type of utilization data.
  *
@@ -36,8 +39,11 @@ public:
    * 1. Wait on commandPort for remote command.
    * 2. Start all crawlers.
    * 3. Register to collectors.
+   * \param     commandPort     The port number for monitor to communicate with collectors.
+   * \param     vecCollectorIps The list of IPs for all the collectors.
+   * \param     rateInSecond    The monitoring rate, default is 1 second.
    */
-  Monitor(int commandPort, std::vector< std::string > vecCollectorIps, int rateInSecond);
+  Monitor(int commandPort, std::vector< std::string > vecCollectorIps, int rateInSecond = 1);
 
   /*!
    * Deinitialize the monitor.
@@ -98,10 +104,17 @@ private:
 
 
 private:
+  pthread_rwlock_t rwlock_;
   int monitoringRate_;
-  int commandListeningPort_;
-  pthread_t commandLiseningPid_;
-  std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
+  bool fetchDataServiceStop_;
+  int communicationServicePort_;
+  int commandServiceSocketFd;        //      file descriptor for command socket
+  pthread_t communicationServicePid_;
+  bool commandServiceStop_;
+  pthread_t pushDataServicePid_;
+  bool pushDataServiceStop_;
+  static std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
+  static std::map<std::string, CrawlerStatus> crawlers_;
 };
 
 
