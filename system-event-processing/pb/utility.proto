@@ -1,5 +1,11 @@
 package utility;
 
+message CommunicationEvent {
+  required string eventType = 1;
+  required string eventSource = 2;
+  optional string eventContent = 3;
+}
+
 message MetaData {
   required string monitorName = 1;
   required string jsonString = 2;
