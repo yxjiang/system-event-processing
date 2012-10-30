@@ -19,6 +19,10 @@ Crawler::Crawler()
   ss << uuid;
   this->name_ = ss.str();
   pthread_rwlock_init(&rwlock_, NULL);
+}
+
+void Crawler::Init()
+{
   this->SetCrawlerType();
   this->FetchStableMetaData();
 }
@@ -40,7 +44,7 @@ string Crawler::GetStreamType() const
 
 std::map<std::string, std::string> Crawler::GetStableData() const
 {
-  return stableMetaData_;       // no lock is needed
+  return stableMetaData_; // no lock is needed
 }
 
 ObserveData Crawler::GetData()
@@ -51,19 +55,16 @@ ObserveData Crawler::GetData()
   return data;
 }
 
-
-
-
-
-
-
 std::string CPUCrawler::statFile_ = "/proc/stat";
 
-CPUCrawler::CPUCrawler(Mode mode) : Crawler(), mode_(mode)
-{}
+CPUCrawler::CPUCrawler(Mode mode)
+    : Crawler(), mode_(mode)
+{
+}
 
 CPUCrawler::~CPUCrawler()
-{}
+{
+}
 
 /*
  * Fetch the CPU usage from the "/proc/stat" file.
@@ -72,7 +73,7 @@ CPUCrawler::~CPUCrawler()
 void CPUCrawler::FetchMetaData()
 {
   FILE *fp = fopen(statFile_.c_str(), "r");
-  char cpu_id[8];	//	just for place order to hold the CPU ID
+  char cpu_id[8]; //	just for place order to hold the CPU ID
   int cpu_count = GetCPUCount();
 //	int cpu_count = 16;
   if (mode_ == TOTAL_CPU)
@@ -102,7 +103,8 @@ void CPUCrawler::FetchMetaData()
       total_period = used_period;
     time(&(curData_.timestamp));
 
-    boost::shared_ptr<std::map<string, string> > shared_map(new map<string, string>);
+    boost::shared_ptr<std::map<string, string> > shared_map(
+        new map<string, string>);
     stringstream ss;
     ss << static_cast<float>(used_period) / (total_period);
     shared_map->insert(make_pair<string, string>("cpu-usage-total", ss.str()));
@@ -110,8 +112,7 @@ void CPUCrawler::FetchMetaData()
     curData_.properties_ = shared_map;
     pthread_rwlock_unlock(&rwlock_);
     //	cur_data.value = user_time;
-  }
-  else
+  } else
   {
     unsigned long *user_time, *nice_time, *sys_time, *idle_time, *iowait_time,
         *int_time, *softint_time;
@@ -159,7 +160,8 @@ void CPUCrawler::FetchMetaData()
           &unknown2_time[i], &unknown3_time[i]);
 
     time(&(curData_.timestamp));
-    boost::shared_ptr< std::map< string, string > > shared_map(new map<string, string>);
+    boost::shared_ptr<std::map<string, string> > shared_map(
+        new map<string, string>);
     int *used_time_after = new int[cpu_count];
     int *total_time_after = new int[cpu_count];
     int *used_period = new int[cpu_count];
@@ -182,7 +184,7 @@ void CPUCrawler::FetchMetaData()
       {
         prop = static_cast<float>(used_period[i]) / (total_period[i]);
       }
-      ss << prop;	//	check if prop is NaN
+      ss << prop; //	check if prop is NaN
       shared_map->insert(make_pair<string, string>(prop_name, ss.str()));
     }
 
@@ -222,21 +224,24 @@ void CPUCrawler::FetchStableMetaData()
   int numOfCores = GetCPUCount();
   char numOfCoresStr[8];
   sprintf(numOfCoresStr, "%d", numOfCores);
-  stableMetaData_.insert(make_pair<string, string>("numberOfCores", numOfCoresStr));
+  stableMetaData_.insert(
+      make_pair<string, string>("numberOfCores", numOfCoresStr));
 
   ifstream fin("/proc/cpuinfo");
   string line;
-  getline(fin, line);   //  skip first line
+  getline(fin, line); //  skip first line
   getline(fin, line);
   vector<string> vendorIDKeyValue;
   Split(line, ':', vendorIDKeyValue, true);
-  stableMetaData_.insert(make_pair<string, string>("vendorName", vendorIDKeyValue[1]));
+  stableMetaData_.insert(
+      make_pair<string, string>("vendorName", vendorIDKeyValue[1]));
   getline(fin, line);
   getline(fin, line);
   getline(fin, line);
   vector<string> modelNameKeyValue;
   Split(line, ':', modelNameKeyValue, true);
-  stableMetaData_.insert(make_pair<string, string>("vendorName", modelNameKeyValue[1]));
+  stableMetaData_.insert(
+      make_pair<string, string>("vendorName", modelNameKeyValue[1]));
   getline(fin, line);
   getline(fin, line);
   getline(fin, line);

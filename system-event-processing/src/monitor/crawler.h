@@ -19,10 +19,10 @@
 #include <boost/uuid/uuid_io.hpp>
 #include "../common/common.h"
 
-
 //#include <sstream>
 
-namespace event {
+namespace event
+{
 
 /*
  * The basic observe value, each node contains the observed timestamp and the observed value.
@@ -30,10 +30,9 @@ namespace event {
 typedef struct
 {
 public:
-    time_t timestamp;   //  the timestamp of the observed value
-    boost::shared_ptr<std::map<std::string, std::string> > properties_;
+  time_t timestamp; //  the timestamp of the observed value
+  boost::shared_ptr<std::map<std::string, std::string> > properties_;
 } ObserveData;
-
 
 /*
  * The crawler that retrieve a particular type of meta-data.
@@ -42,39 +41,44 @@ public:
 class Crawler
 {
 public:
-    /*!
-     * Initialize the crawler, including set the type and get the stable meta-data.
-     */
-    Crawler();
-    /*!
-     * Deinitialize the crawler.
-     */
-    virtual ~Crawler();
-    /*!
-     * Get the name of the crawler.
-     */
-    std::string GetCrawlerName() const;
-    /*!
-     * Get the type of the meta-data.
-     */
-    std::string GetStreamType() const;
-    /*!
-     * Crawl the stable meta-data.
-     */
-    std::map<std::string, std::string> GetStableData() const;
-    /*!
-     * Crawl the meta-data.
-     */
-    virtual void FetchMetaData() = 0;
-    /*!
-     * Get currently observed meta-data
-     */
-    ObserveData GetData();
+  /*!
+   * Initialize the crawler, including set the type and get the stable meta-data.
+   */
+  Crawler();
+  /*!
+   * Deinitialize the crawler.
+   */
+  virtual ~Crawler();
+
+  /*!
+   * Initialize the crawler.
+   */
+  void Init();
+  /*!
+   * Get the name of the crawler.
+   */
+  std::string GetCrawlerName() const;
+  /*!
+   * Get the type of the meta-data.
+   */
+  std::string GetStreamType() const;
+  /*!
+   * Crawl the stable meta-data.
+   */
+  std::map<std::string, std::string> GetStableData() const;
+  /*!
+   * Crawl the meta-data.
+   */
+  virtual void FetchMetaData() = 0;
+  /*!
+   * Get currently observed meta-data
+   */
+  ObserveData GetData();
 
 protected:
-    /*!
-     * Set the type of the crawler.
-     */
+  /*!
+   * Set the type of the crawler.
+   */
   virtual void SetCrawlerType() = 0;
   /*!
    * Crawl the stable meta-data.
@@ -82,40 +86,42 @@ protected:
   virtual void FetchStableMetaData() = 0;
 
 protected:
-    std::string name_;
-    std::string type_;
-    ObserveData curData_;
-    std::map<std::string, std::string> stableMetaData_;
-    pthread_rwlock_t rwlock_;
+  std::string name_;
+  std::string type_;
+  ObserveData curData_;
+  std::map<std::string, std::string> stableMetaData_;
+  pthread_rwlock_t rwlock_;
 };
 
 /*
  * Crawl that fetch the data of
  */
-class CPUCrawler : public Crawler
+class CPUCrawler: public Crawler
 {
 public:
-    enum Mode
-    {
-        TOTAL_CPU = 0,     //   get the overall stat
-        SEPARATE_CPU = 1   //   stat each CPU separately
-    };
+  enum Mode
+  {
+    TOTAL_CPU = 0, //   get the overall stat
+    SEPARATE_CPU = 1
+  //   stat each CPU separately
+  };
 
-    CPUCrawler(Mode mode);
-    virtual ~CPUCrawler();
-    /*
-     * Fetch the CPU usage.
-     */
-    void FetchMetaData();
-    void SetCrawlerType();
-    void FetchStableMetaData();
+  CPUCrawler(Mode mode = SEPARATE_CPU);
+  virtual ~CPUCrawler();
+  /*
+   * Fetch the CPU usage.
+   */
+  void FetchMetaData();
+
+protected:
+  void SetCrawlerType();
+  void FetchStableMetaData();
 
 private:
-    static std::string statFile_;
+  static std::string statFile_;
 //    int cpuIndex_;
-    Mode mode_;
+  Mode mode_;
 };
-
 
 ///*
 // * Crawl the memory usage of the target system.
@@ -168,7 +174,7 @@ private:
 //    static std::string diskStatPipe_;
 //};
 //
-};
-
+}
+;
 
 #endif /* CRAWLER_H_ */
