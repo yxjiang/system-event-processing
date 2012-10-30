@@ -50,7 +50,7 @@ public:
    * \param     vecCollectorIps The list of IPs for all the collectors.
    * \param     rateInSecond    The monitoring rate, default is 1 second.
    */
-  Monitor(int commandPort, std::vector< std::string > vecCollectorIps, int rateInSecond = 1);
+  Monitor(int commandPort, std::vector< std::string > vecCollectorIps, int collectorRegistrationPort = 32167, int collectorDataPort = 32168, int rateInSecond = 1);
 
   /*!
    * Deinitialize the monitor.
@@ -116,8 +116,11 @@ private:
 
 
 private:
-  pthread_rwlock_t rwlock_;
+  std::map<std::string, bool> collectorStatus_;
+  pthread_rwlock_t stopSymbolrwlock_;
   int monitoringRate_;
+  static int collectorRegistrationPort_;
+  static int collectorDataPort_;
   bool fetchDataServiceStop_;
   int communicationServicePort_;
   int commandServiceSocketFd;        //      file descriptor for command socket

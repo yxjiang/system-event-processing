@@ -11,12 +11,18 @@ namespace event
 {
 using namespace std;
 
+int Monitor::collectorRegistrationPort_ = 32167;
+int Monitor::collectorDataPort_ = 32168;
 map<string, CrawlerStatus> Monitor::crawlers_;
 Monitor::Monitor(int communicationServicePort, std::vector<std::string> vecCollectorIps,
-    int rateInSecond) :
+    int collectorRegistrationPort, int collectorDataPort, int rateInSecond) :
     monitoringRate_(rateInSecond), communicationServicePort_(communicationServicePort)
 {
-  pthread_rwlock_init(&rwlock_, NULL);
+  collectorRegistrationPort_ = collectorRegistrationPort;
+  collectorDataPort_ = collectorDataPort;
+  //  register to collectors
+  _RegisterToCollectors();
+  pthread_rwlock_init(&stopSymbolrwlock_, NULL);
   //  start all crawlers
   map<string, CrawlerStatus>::iterator itr = crawlers_.begin();
   for (; itr != crawlers_.end(); ++itr)
@@ -26,8 +32,6 @@ Monitor::Monitor(int communicationServicePort, std::vector<std::string> vecColle
   pthread_create(&(this->communicationServicePid_), NULL, _CommandService, NULL);
   //  register to collectors by sending profile, including stable meta-data
   pthread_create(&(this->pushDataServicePid_), NULL, _PushDataThread, NULL);
-
-  _RegisterToCollectors();
 
   //  wait for all threads to stop
   itr = crawlers_.begin();
@@ -41,11 +45,11 @@ Monitor::Monitor(int communicationServicePort, std::vector<std::string> vecColle
 
 Monitor::~Monitor()
 {
-  pthread_rwlock_wrlock(&rwlock_);
+  pthread_rwlock_wrlock(&stopSymbolrwlock_);
   this->fetchDataServiceStop_ = true;
   this->commandServiceStop_ = true;
   this->pushDataServiceStop_ = true;
-  pthread_rwlock_unlock(&rwlock_);
+  pthread_rwlock_unlock(&stopSymbolrwlock_);
 
   //  release crawlers
   map<string, CrawlerStatus>::iterator itr = crawlers_.begin();
@@ -55,7 +59,7 @@ Monitor::~Monitor()
   //  close socket
   close(this->commandServiceSocketFd);
 
-  pthread_rwlock_destroy(&rwlock_);
+  pthread_rwlock_destroy(&stopSymbolrwlock_);
 }
 
 vector<string> Monitor::GetCrawlerNames()
@@ -130,10 +134,10 @@ void *Monitor::_CommandService(void *arg)
 
   while (true)
   {
-    pthread_rwlock_rdlock(&this->rwlock_);
+    pthread_rwlock_rdlock(&this->stopSymbolrwlock_);
     if (this->commandServiceStop_ == true)
       break;
-    pthread_rwlock_unlock(&this->rwlock_);
+    pthread_rwlock_unlock(&this->stopSymbolrwlock_);
 
     int connectionSocket = accept(communicationServiceSocket, NULL, 0);
     stringstream recvContent;
@@ -164,7 +168,42 @@ void *Monitor::_CommandService(void *arg)
  */
 void Monitor::_RegisterToCollectors()
 {
+  struct hostent *collectorHostent;
+  struct sockaddr_in collectorAddress;
+  //  iterative register to all collector
+  map<string, bool>::iterator collectorItr = collectorStatus_.begin();
+  for (; collectorItr != collectorStatus_.end(); ++collectorItr)
+  {
+    //  send profile to collector via socket
+    int socketFd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socketFd < 0)
+    {
+      fprintf(stderr,
+          "[%s] During registration to collectors, failed to create socket. Monitor terminated\n",
+          GetCurrentTime());
+      exit(1);
+      collectorHostent = gethostbyname(collectorItr->first.c_str());
+      if (collectorHostent == NULL)
+      {
+        fprintf(stderr, "[%s] During registration to collectors, no such collector with IP %s.\n",
+            GetCurrentTime(), collectorItr->first.c_str());
+        collectorItr->second = false;
+        continue;
+      }
 
+      bzero(&collectorAddress, sizeof(collectorAddress));
+      collectorAddress.sin_family = AF_INET;
+      bcopy((char *) collectorHostent->h_addr, (char *) &collectorAddress.sin_addr.s_addr,
+          collectorHostent->h_length);
+      collectorAddress.sin_port = htons(collectorRegistrationPort_);
+      if (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
+      {
+        perror("ERROR connecting");
+        exit(1);
+      }
+    }
+
+  }
 }
 
 /*!
