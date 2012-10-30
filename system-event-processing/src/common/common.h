@@ -16,7 +16,8 @@
 #include <boost/algorithm/string.hpp>
 #include "string.h"
 
-namespace event {
+namespace event
+{
 
 /*  sleep interval, 500 millisecond  */
 const unsigned long int CRAWLER_SLEEP_TIME_NANOSEC = 500000000;
@@ -29,12 +30,23 @@ const unsigned long int CRAWLER_SAMPLE_TIME_NANOSEC = 500000000;
  * \param   timestamp    The timestamp needs to be transformed.
  * \return  The time in string format
  */
-inline std::string TimeToString(const time_t &timestamp) {
+inline std::string TimeToString(const time_t &timestamp)
+{
   struct tm *time = gmtime(&timestamp);
   char out_buf[128];
   strftime(out_buf, 128, "%Y-%m-%d %Z %X", time);
   std::string str = out_buf;
   return str;
+}
+
+/*!
+ * Get current time in string format.
+ */
+inline std::string GetCurrentTime()
+{
+  time_t curTime;
+  time(&curTime);
+  return TimeToString(curTime);
 }
 
 /*!
@@ -46,7 +58,8 @@ int GetCPUCount();
 /*!
  * Let the thread to sleep for a while.
  */
-inline void ThreadSleep(long int sec, long int nanosec) {
+inline void ThreadSleep(long int sec, long int nanosec)
+{
   struct timespec sleep_interval;
   sleep_interval.tv_sec = sec;
   sleep_interval.tv_nsec = nanosec;
@@ -59,21 +72,24 @@ inline void ThreadSleep(long int sec, long int nanosec) {
  * \params  str The input string.
  * \params  value   The output float value.
  */
-inline void StringToFloat(const std::string &str, float &value) {
+inline void StringToFloat(const std::string &str, float &value)
+{
   sscanf(str.c_str(), "%f", &value);
 }
 
 /*!
  * Split the string by specified delim.
  */
-void Split(const std::string &s, char c, std::vector<std::string> & v, bool trim=false);
+void Split(const std::string &s, char c, std::vector<std::string> & v,
+    bool trim = false);
 
 /*!
  * Convert the number of bytes to KB.
  * \param   bytes   The number of bytes.
  * \return  The corresponding value of KB.
  */
-inline double BytesToKB(int bytes) {
+inline double BytesToKB(int bytes)
+{
   return bytes / 1024;
 }
 
@@ -82,7 +98,8 @@ inline double BytesToKB(int bytes) {
  * \param   bytes   The number of bytes.
  * \return  The corresponding value of MB.
  */
-inline double BytesToMB(double bytes) {
+inline double BytesToMB(double bytes)
+{
   return bytes / 1048576;
 }
 

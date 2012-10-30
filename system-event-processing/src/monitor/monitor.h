@@ -8,7 +8,14 @@
 #ifndef MONITOR_H_
 #define MONITOR_H_
 
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <pthread.h>
+#include <boost/algorithm/string/predicate.hpp>
 #include "../common/common.h"
 
 namespace event
@@ -81,20 +88,20 @@ private:
    * Register to the collectors by sending the profiles of the monitor.
    * Also, the stable meta-data grabbed by crawlers are running running  also sent.
    */
-  void _RegisterToCollectors();
+  static void _RegisterToCollectors();
 
   /*!
    * Handle the collector renew event.
    * This event happens when the corresponding collector for this monitor recover from crash.
    * And then the recovered collector asks for the reconnection for all the monitors it previously communicated.
    */
-  void _HandleCollectorRenew();
+  static void _HandleCollectorRenew(int socketFd);
 
   /*!
    * Thread entry function.
    * Push the meta-data to collectors periodically.
    */
-  static void *_PushData(void *arg);
+  static void *_PushDataThread(void *arg);
 
   /*!
    * Generate the json and return it as text.
