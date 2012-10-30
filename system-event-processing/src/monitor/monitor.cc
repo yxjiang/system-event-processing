@@ -133,12 +133,14 @@ void *Monitor::_CommandService(void *arg)
     printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime(),
         this->communicationServicePort_);
 
+  bool stopService = false;
   while (true)
   {
     pthread_rwlock_rdlock(&this->stopSymbolrwlock_);
-    if (this->commandServiceStop_ == true)
-      break;
+    stopService = this->commandServiceStop_;
     pthread_rwlock_unlock(&this->stopSymbolrwlock_);
+    if(true == stopService)
+      break;
 
     int connectionSocket = accept(communicationServiceSocket, NULL, 0);
     stringstream recvContent;
@@ -178,7 +180,7 @@ void Monitor::_RegisterToCollectors()
   string compressedContent = stableMetaData.SerializeAsString();
 
   //  iterative register to all collector
-  struct hostent *collectorHostent;
+  struct hostent *collectorHostent = NULL;
   struct sockaddr_in collectorAddress;
   map<string, bool>::iterator collectorItr = collectorStatus_.begin();
   for (; collectorItr != collectorStatus_.end(); ++collectorItr)
@@ -187,50 +189,56 @@ void Monitor::_RegisterToCollectors()
     int socketFd = socket(AF_INET, SOCK_STREAM, 0);
     if (socketFd < 0)
     {
-      fprintf(stderr,
-          "[%s] During registration to collectors, failed to create socket. Monitor terminated\n",
+      fprintf(stderr, "[%s] During registration to collectors, failed to create socket. Monitor terminated\n",
           GetCurrentTime());
       exit(1);
-      collectorHostent = gethostbyname(collectorItr->first.c_str());
-      if (collectorHostent == NULL)
-      {
-        fprintf(stderr, "[%s] During registration to collectors, no such collector with IP %s.\n",
-            GetCurrentTime(), collectorItr->first.c_str());
-        collectorItr->second = false;
-        continue;
-      }
-
-      bzero(&collectorAddress, sizeof(collectorAddress));
-      collectorAddress.sin_family = AF_INET;
-      bcopy((char *) collectorHostent->h_addr, (char *) &collectorAddress.sin_addr.s_addr,
-          collectorHostent->h_length);
-      collectorAddress.sin_port = htons(collectorRegistrationPort_);
-      int numberOfTry = 0;
-      bool success = false;
-      //  retry for 3 times
-      while (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
-      {
-        if(++numberOfTry > 3)
-          break;
-      }
-      if(false == success)
-      {
-        fprintf(stderr,
-            "[%s] During registration to collectors, connect to collector [%s] failed.\n",
-            GetCurrentTime(), collectorItr->first.c_str());
-        exit(1);
-      }
-
-      int bytesSent;
-      if(send(socketFd, compressedContent.c_str(), strlen(compressedContent.c_str()), 0) < 0)
-      {
-        fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info.", GetCurrentTime());
-        exit(1);
-      }
-      close(socketFd);
     }
 
+    if (collectorHostent != NULL)
+      free(collectorHostent);
+    collectorHostent = gethostbyname(collectorItr->first.c_str());
+    if (collectorHostent == NULL)
+    {
+      fprintf(stderr, "[%s] During registration to collectors, no such collector with IP %s.\n",
+          GetCurrentTime(), collectorItr->first.c_str());
+      collectorItr->second = false;
+      close(socketFd);
+      continue;
+    }
+
+    bzero(&collectorAddress, sizeof(collectorAddress));
+    collectorAddress.sin_family = AF_INET;
+    bcopy((char *) collectorHostent->h_addr, (char *) &collectorAddress.sin_addr.s_addr, collectorHostent->h_length);
+    collectorAddress.sin_port = htons(collectorRegistrationPort_);
+    int numberOfTry = 0;
+    bool success = false;
+    //  retry for 3 times
+    while (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
+    {
+      if (++numberOfTry > 3)
+        break;
+    }
+    if (false == success)
+    {
+      fprintf(stderr, "[%s] During registration to collectors, connect to collector [%s] failed.\n",
+          GetCurrentTime(), collectorItr->first.c_str());
+      close(socketFd);
+      exit(1);
+    }
+
+    int bytesSent;
+    if (send(socketFd, compressedContent.c_str(), strlen(compressedContent.c_str()), 0) < 0)
+    {
+      fprintf(stderr,
+          "[%s] During registration to collectors, failed to send the registration info.",
+          GetCurrentTime());
+      close(socketFd);
+      exit(1);
+    }
+    close(socketFd);
+    collectorItr->second = true;
   }
+
 }
 
 /*!
@@ -247,7 +255,79 @@ void Monitor::_HandleCollectorRenew(int connectionSocket)
  */
 void *Monitor::_PushDataThread(void *arg)
 {
+  string compressedDynamicInfo = _AssembleDynamicMetaDataJson();
+  bool stopService = false;
+  while(true)
+  {
+    pthread_rwlock_rdlock(&stopSymbolrwlock_);
+    stopService = this->pushDataServiceStop_;
+    pthread_rwlock_unlock(&stopSymbolrwlock_);
+    if(true == stopService)
+      break;
 
+    map<string, bool>::iterator collectorItr = collectorStatus_.begin();
+    for(; collectorItr != collectorStatus_.end(); ++collectorItr)
+    {
+      if(false == collectorItr->second)
+        continue;
+
+      //  send compressed data to collector
+      struct hostent *collectorHostent = NULL;
+      struct sockaddr_in collectorAddress;
+      int socketFd = socket(AF_INET, SOCK_STREAM, 0);
+      if (socketFd < 0)
+      {
+        fprintf(stderr, "[%s] During push data to collectors, failed to create socket. Monitor terminated\n",
+            GetCurrentTime());
+        continue;
+      }
+
+      if (collectorHostent != NULL)
+        free(collectorHostent);
+      collectorHostent = gethostbyname(collectorItr->first.c_str());
+      if (collectorHostent == NULL)
+      {
+        fprintf(stderr, "[%s] During push data to collectors, no such collector with IP %s.\n",
+            GetCurrentTime(), collectorItr->first.c_str());
+        close(socketFd);
+        continue;
+      }
+
+      bzero(&collectorAddress, sizeof(collectorAddress));
+      collectorAddress.sin_family = AF_INET;
+      bcopy((char *) collectorHostent->h_addr, (char *) &collectorAddress.sin_addr.s_addr, collectorHostent->h_length);
+      collectorAddress.sin_port = htons(collectorRegistrationPort_);
+      int numberOfTry = 0;
+      bool success = false;
+      //  retry for 3 times
+      while (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
+      {
+        if (++numberOfTry > 3)
+          break;
+      }
+      if (false == success)
+      {
+        fprintf(stderr, "[%s] During push data to collectors, connect to collector [%s] failed.\n",
+            GetCurrentTime(), collectorItr->first.c_str());
+        close(socketFd);
+        exit(1);
+      }
+
+      int bytesSent;
+      if (send(socketFd, compressedDynamicInfo.c_str(), strlen(compressedDynamicInfo.c_str()), 0) < 0)
+      {
+        fprintf(stderr,
+            "[%s] During registration to collectors, failed to send the registration info.",
+            GetCurrentTime());
+        close(socketFd);
+        exit(1);
+      }
+      close(socketFd);
+
+    }
+
+    ThreadSleep(monitoringRate_, 0);
+  }
   return NULL;
 }
 
