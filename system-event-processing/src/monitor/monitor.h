@@ -50,7 +50,8 @@ public:
    * \param     vecCollectorIps The list of IPs for all the collectors.
    * \param     rateInSecond    The monitoring rate, default is 1 second.
    */
-  Monitor(int commandPort, std::vector< std::string > vecCollectorIps, int collectorRegistrationPort = 32167, int collectorDataPort = 32168, int rateInSecond = 1);
+  Monitor(int commandPort, std::vector<std::string> vecCollectorIps, int collectorRegistrationPort =
+      32167, int collectorDataPort = 32168, int rateInSecond = 1);
 
   /*!
    * Deinitialize the monitor.
@@ -105,9 +106,13 @@ private:
 
   /*!
    * Generate the json and return it as text.
-   * The data should be compressed by protocol buffer.
    */
-  static const std::string _AssembleJson();
+  static const std::string _AssembleStatbleMetaDataJson();
+
+  /*!
+   * Generate the json and return it as text.
+   */
+  static const std::string _AssembleDynamicMetaDataJson();
 
   /*!
    * The thread function entry for fetching data.

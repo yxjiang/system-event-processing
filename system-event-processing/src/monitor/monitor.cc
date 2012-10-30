@@ -20,8 +20,6 @@ Monitor::Monitor(int communicationServicePort, std::vector<std::string> vecColle
 {
   collectorRegistrationPort_ = collectorRegistrationPort;
   collectorDataPort_ = collectorDataPort;
-  //  register to collectors
-  _RegisterToCollectors();
   pthread_rwlock_init(&stopSymbolrwlock_, NULL);
   //  start all crawlers
   map<string, CrawlerStatus>::iterator itr = crawlers_.begin();
@@ -32,6 +30,9 @@ Monitor::Monitor(int communicationServicePort, std::vector<std::string> vecColle
   pthread_create(&(this->communicationServicePid_), NULL, _CommandService, NULL);
   //  register to collectors by sending profile, including stable meta-data
   pthread_create(&(this->pushDataServicePid_), NULL, _PushDataThread, NULL);
+
+  //  register to collectors
+  _RegisterToCollectors();
 
   //  wait for all threads to stop
   itr = crawlers_.begin();
@@ -168,9 +169,17 @@ void *Monitor::_CommandService(void *arg)
  */
 void Monitor::_RegisterToCollectors()
 {
+  //  prepare the data need to be sent
+  utility::MetaData stableMetaData;
+  char machineName[256];
+  gethostname(machineName, sizeof(machineName));
+  stableMetaData.set_monitorname(machineName);
+  stableMetaData.set_jsonstring(_AssembleStatbleMetaDataJson());
+  string compressedContent = stableMetaData.SerializeAsString();
+
+  //  iterative register to all collector
   struct hostent *collectorHostent;
   struct sockaddr_in collectorAddress;
-  //  iterative register to all collector
   map<string, bool>::iterator collectorItr = collectorStatus_.begin();
   for (; collectorItr != collectorStatus_.end(); ++collectorItr)
   {
@@ -196,11 +205,29 @@ void Monitor::_RegisterToCollectors()
       bcopy((char *) collectorHostent->h_addr, (char *) &collectorAddress.sin_addr.s_addr,
           collectorHostent->h_length);
       collectorAddress.sin_port = htons(collectorRegistrationPort_);
-      if (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
+      int numberOfTry = 0;
+      bool success = false;
+      //  retry for 3 times
+      while (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
       {
-        perror("ERROR connecting");
+        if(++numberOfTry > 3)
+          break;
+      }
+      if(false == success)
+      {
+        fprintf(stderr,
+            "[%s] During registration to collectors, connect to collector [%s] failed.\n",
+            GetCurrentTime(), collectorItr->first.c_str());
         exit(1);
       }
+
+      int bytesSent;
+      if(send(socketFd, compressedContent.c_str(), strlen(compressedContent.c_str()), 0) < 0)
+      {
+        fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info.", GetCurrentTime());
+        exit(1);
+      }
+      close(socketFd);
     }
 
   }
@@ -225,9 +252,17 @@ void *Monitor::_PushDataThread(void *arg)
 }
 
 /*!
- * Assemble the meta-data grabbed by crawlers into JSON format.
+ * Assemble the stable meta-data grabbed by crawler into JSON format.
  */
-const std::string Monitor::_AssembleJson()
+const std::string Monitor::_AssembleStatbleMetaDataJson()
+{
+
+}
+
+/*!
+ * Assemble the dynamic meta-data grabbed by crawlers into JSON format.
+ */
+const std::string Monitor::_AssembleDynamicMetaDataJson()
 {
 
 }
