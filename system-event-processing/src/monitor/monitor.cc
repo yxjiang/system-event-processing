@@ -17,6 +17,9 @@ map<string, CrawlerStatus> Monitor::crawlers_;
 int Monitor::monitoringRate_ = 1;
 pthread_rwlock_t Monitor::stopSymbolrwlock_;
 bool Monitor::fetchDataServiceStop_ = false;
+pthread_mutex_t Monitor::dataFetchedMutex_ = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t Monitor::dataFetchedCond_ = PTHREAD_COND_INITIALIZER;
+bool Monitor::firstDataFetched_ = false;
 
 
 pthread_rwlock_t Monitor::collectorStatusrwlock_;
@@ -75,11 +78,13 @@ void Monitor::Run()
 //  //  initialize communication service
 //  pthread_create(&(this->communicationServicePid_), NULL, _CommandService,
 //      NULL);
-//  //  register to collectors by sending profile, including stable meta-data
-//  pthread_create(&(this->pushDataServicePid_), NULL, _PushDataMainThread, NULL);
+
 //
 //  //  register to collectors
 //  _RegisterToCollectors();
+
+  //  push data periodically to collectors
+  pthread_create(&(this->pushDataServicePid_), NULL, _PushDataMainThread, NULL);
 
   //  wait for all threads to stop
   itr = crawlers_.begin();
@@ -88,7 +93,7 @@ void Monitor::Run()
       pthread_join(itr->second.pid, NULL);
 //
 //  pthread_join(this->communicationServicePid_, NULL);
-//  pthread_join(this->pushDataServicePid_, NULL);
+  pthread_join(this->pushDataServicePid_, NULL);
 }
 
 vector<string> Monitor::GetCrawlerNames()
@@ -134,7 +139,6 @@ void *Monitor::_CrawlerService(void *arg)
   Crawler *crawler = (Crawler *)arg;
   while(true)
   {
-    cout << "Crawler " << crawler->GetStreamType() << " fetch data." << endl;
     pthread_rwlock_wrlock(&stopSymbolrwlock_);
     stopService = fetchDataServiceStop_;
     pthread_rwlock_unlock(&stopSymbolrwlock_);
@@ -142,6 +146,10 @@ void *Monitor::_CrawlerService(void *arg)
       break;
 
     crawler->FetchMetaData();
+    pthread_mutex_lock(&dataFetchedMutex_);
+    firstDataFetched_ = true;
+    pthread_cond_signal(&dataFetchedCond_);
+    pthread_mutex_unlock(&dataFetchedMutex_);
     ThreadSleep(monitoringRate_, 0);
   }
   return NULL;
@@ -319,21 +327,29 @@ void *Monitor::_CrawlerService(void *arg)
 //
 //}
 //
-///*!
-// * Push data to collectors. The data is compressed by protocol buffer.
-// */
-//void *Monitor::_PushDataMainThread(void *arg)
-//{
-//  string compressedDynamicInfo = _AssembleDynamicMetaDataJson();
-//  bool stopService = false;
-//  while (true)
-//  {
-//    pthread_rwlock_rdlock(&stopSymbolrwlock_);
-//    stopService = pushDataServiceStop_;
-//    pthread_rwlock_unlock(&stopSymbolrwlock_);
-//    if (true == stopService)
-//      break;
-//
+/*!
+ * Push data to collectors. The data is compressed by protocol buffer.
+ */
+void *Monitor::_PushDataMainThread(void *arg)
+{
+  bool stopService = false;
+
+  pthread_mutex_lock(&dataFetchedMutex_);
+  while(true == firstDataFetched_)
+    pthread_cond_wait(&dataFetchedCond_, &dataFetchedMutex_);
+  pthread_mutex_unlock(&dataFetchedMutex_);
+
+  while (true)
+  {
+    string compressedDynamicInfo = _AssembleDynamicMetaDataJson();
+    pthread_rwlock_rdlock(&stopSymbolrwlock_);
+    stopService = pushDataServiceStop_;
+    pthread_rwlock_unlock(&stopSymbolrwlock_);
+    if (true == stopService)
+      break;
+
+    cout << compressedDynamicInfo << endl;
+
 //    map<string, bool>::iterator collectorItr = collectorStatus_.begin();
 //    for (; collectorItr != collectorStatus_.end(); ++collectorItr)
 //    {
@@ -347,11 +363,11 @@ void *Monitor::_CrawlerService(void *arg)
 //      pthread_t workerPid;
 //      pthread_create(&workerPid, NULL, _PushDataWorkerThread, (void *) &package);
 //    }
-//
-//    ThreadSleep(monitoringRate_, 0);
-//  }
-//  return NULL;
-//}
+
+    ThreadSleep(monitoringRate_, 0);
+  }
+  return NULL;
+}
 //
 ///*!
 // * The worker thread to push data to a specified collector.
@@ -456,17 +472,17 @@ void *Monitor::_CrawlerService(void *arg)
 //  return strJson;
 //}
 //
-///*!
-// * Assemble the dynamic meta-data grabbed by crawlers into JSON format.
-// */
-//const string Monitor::_AssembleDynamicMetaDataJson()
-//{
-//  ptree root;
-//  map<string, CrawlerStatus>::iterator crawlerItr = crawlers_.begin();
-//  //  put timestamp of the first crawler
-//  ObserveData curData = crawlerItr->second.crawler->GetData();
-//  root.put<long int>("timestamp", curData.timestamp);    //  set timestamp
-//
+/*!
+ * Assemble the dynamic meta-data grabbed by crawlers into JSON format.
+ */
+const string Monitor::_AssembleDynamicMetaDataJson()
+{
+  ptree root;
+  map<string, CrawlerStatus>::iterator crawlerItr = crawlers_.begin();
+  //  put timestamp of the first crawler
+  ObserveData curData = crawlerItr->second.crawler->GetData();
+  root.put<long int>("timestamp", curData.timestamp);    //  set timestamp
+
 //  //  iterates all the crawlers to assemble the monitoring meta-data
 //  for(; crawlerItr != crawlers_.end(); ++crawlerItr)
 //  {
@@ -480,18 +496,18 @@ void *Monitor::_CrawlerService(void *arg)
 //
 //      root.add_child(streamType, stream_node);
 //  }
-//
-//  stringstream ss;
-//  write_json(ss, root);
-//  string strJson = ss.str();
-//
-//  if(strJson.size() == 0)
-//  {
-//      fprintf(stderr, "size = 0\n");
-//  }
-//
-//  return strJson;
-//}
+
+  stringstream ss;
+  write_json(ss, root);
+  string strJson = ss.str();
+
+  if(strJson.size() == 0)
+  {
+      fprintf(stderr, "size = 0\n");
+  }
+
+  return strJson;
+}
 
 }   //  end of namespace event
 

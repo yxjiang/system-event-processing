@@ -19,11 +19,11 @@
 namespace event
 {
 
-/*  sleep interval, 500 millisecond  */
-const unsigned long int CRAWLER_SLEEP_TIME_NANOSEC = 500000000;
+/*  sleep interval, 50 millisecond  */
+const unsigned long int CRAWLER_SLEEP_TIME_NANOSEC = 50000000;
 
-/*  sample interval, 500 millisecond */
-const unsigned long int CRAWLER_SAMPLE_TIME_NANOSEC = 500000000;
+/*  sample interval, 50 millisecond */
+const unsigned long int CRAWLER_SAMPLE_TIME_NANOSEC = 50000000;
 
 /*!
  * Convert time_t data structure into string.

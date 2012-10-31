@@ -100,6 +100,16 @@ private:
    * The thread function entry for fetching data.
    */
   static void *_CrawlerService(void *arg);
+  /*!
+   * Thread entry function.
+   * Push the meta-data to collectors periodically.
+   */
+  static void *_PushDataMainThread(void *arg);
+
+//  /*!
+//   * The worker thread to push data to specified collector
+//   */
+//  static void *_PushDataWorkerThread(void *arg);
 
 //  /*!
 //   * The thread entry function for command service task.
@@ -119,26 +129,18 @@ private:
 //   */
 //  static void _HandleCollectorRenew(int socketFd);
 //
-//  /*!
-//   * Thread entry function.
-//   * Push the meta-data to collectors periodically.
-//   */
-//  static void *_PushDataMainThread(void *arg);
-//
-//  /*!
-//   * The worker thread to push data to specified collector
-//   */
-//  static void *_PushDataWorkerThread(void *arg);
+
+
 //
 //  /*!
 //   * Generate the json and return it as text.
 //   */
 //  static const std::string _AssembleStatbleMetaDataJson();
 //
-//  /*!
-//   * Generate the json and return it as text.
-//   */
-//  static const std::string _AssembleDynamicMetaDataJson();
+  /*!
+   * Generate the json and return it as text.
+   */
+  static const std::string _AssembleDynamicMetaDataJson();
 
 
 
@@ -151,6 +153,13 @@ private:
   static int monitoringRate_;
   static pthread_rwlock_t stopSymbolrwlock_;
   static bool fetchDataServiceStop_;
+  static pthread_mutex_t dataFetchedMutex_;
+  static pthread_cond_t dataFetchedCond_;
+  static bool firstDataFetched_;
+
+  /*    push data related task  */
+  pthread_t pushDataServicePid_;
+  static bool pushDataServiceStop_;
 
 
   static pthread_rwlock_t collectorStatusrwlock_;
@@ -162,8 +171,7 @@ private:
   static int commandServiceSocketFd;        //      file descriptor for command socket
   pthread_t communicationServicePid_;
   static bool commandServiceStop_;
-  pthread_t pushDataServicePid_;
-  static bool pushDataServiceStop_;
+
   static std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
 
 };

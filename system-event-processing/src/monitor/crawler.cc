@@ -211,7 +211,7 @@ void CPUCrawler::FetchMetaData()
     delete total_period;
   }
   fclose(fp);
-  ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
+//  ThreadSleep(0, CRAWLER_SLEEP_TIME_NANOSEC);
 }
 
 void CPUCrawler::SetCrawlerType()
