@@ -106,10 +106,10 @@ private:
    */
   static void *_PushDataMainThread(void *arg);
 
-//  /*!
-//   * The worker thread to push data to specified collector
-//   */
-//  static void *_PushDataWorkerThread(void *arg);
+  /*!
+   * The worker thread to push data to specified collector
+   */
+  static void *_PushDataWorkerThread(void *arg);
 
 //  /*!
 //   * The thread entry function for command service task.

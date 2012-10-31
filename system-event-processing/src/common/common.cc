@@ -23,25 +23,13 @@ int GetCPUCount() {
 }
 
 void Split(const std::string &s, char c, std::vector<std::string> & v, bool trim) {
-  int i = 0;
-  int j = s.find(c);
-  while (j >= 0) {
-    v.push_back(s.substr(i, j - i));
-    i = ++j;
-    j = s.find(c, j);
-    if (j < 0)
-    {
-        if(false == trim)
-          v.push_back(s.substr(i, s.length()));
-        else
-        {
-            string newStr = s.substr(i, s.length());
-            boost::algorithm::trim(newStr);
-            v.push_back(newStr);
-        }
-
-    }
-
+  std::stringstream ss(s);
+  std::string item;
+  while (std::getline(ss, item, c))
+  {
+    if(true == trim)
+      item = Trim(item);
+    v.push_back(item);
   }
 }
 

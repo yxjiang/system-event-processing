@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <boost/algorithm/string.hpp>
 #include "string.h"
@@ -80,8 +81,18 @@ inline void StringToFloat(const std::string &str, float &value)
 /*!
  * Split the string by specified delim.
  */
-void Split(const std::string &s, char c, std::vector<std::string> & v,
-    bool trim = false);
+void Split(const std::string &s, char c, std::vector<std::string> & v, bool trim);
+
+inline std::string Trim(std::string &str)
+{
+  size_t s = str.find_first_not_of(" \n\r\t");
+  size_t e = str.find_last_not_of(" \n\r\t");
+
+  if ((std::string::npos == s) || (std::string::npos == e))
+    return "";
+  else
+    return str.substr(s, e - s + 1);
+}
 
 /*!
  * Convert the number of bytes to KB.

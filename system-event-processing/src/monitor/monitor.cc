@@ -41,6 +41,10 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond, int
   collectorRegistrationPort_ = collectorRegistrationPort;
   collectorDataPort_ = collectorDataPort;
 
+  //  initialize collector status
+  for(size_t i = 0; i < vecCollectorIps.size(); ++i)
+    collectorStatus_.insert(make_pair<string, bool>(vecCollectorIps[i], false));
+
   //  initialize locks
   pthread_rwlock_init(&stopSymbolrwlock_, NULL);
   pthread_rwlock_init(&collectorStatusrwlock_, NULL);
@@ -485,19 +489,19 @@ const string Monitor::_AssembleDynamicMetaDataJson()
   ObserveData curData = crawlerItr->second.crawler->GetData();
   root.put<long int>("timestamp", curData.timestamp);    //  set timestamp
 
-//  //  iterates all the crawlers to assemble the monitoring meta-data
-//  for(; crawlerItr != crawlers_.end(); ++crawlerItr)
-//  {
-//      string streamType = crawlerItr->second.crawler->GetStreamType();
-//      ObserveData data = crawlerItr->second.crawler->GetData();
-//      ptree stream_node;
-//      boost::shared_ptr<map<string, string> > properties = data.properties_;
-//      map<string, string>::iterator propertyItr = properties->begin();
-//      for(; propertyItr != properties->end(); ++propertyItr)
-//          stream_node.put<string>(propertyItr->first, propertyItr->second);
-//
-//      root.add_child(streamType, stream_node);
-//  }
+  //  iterates all the crawlers to assemble the monitoring meta-data
+  for(; crawlerItr != crawlers_.end(); ++crawlerItr)
+  {
+      string streamType = crawlerItr->second.crawler->GetStreamType();
+      ObserveData data = crawlerItr->second.crawler->GetData();
+      ptree stream_node;
+      boost::shared_ptr<map<string, string> > properties = data.properties_;
+      map<string, string>::iterator propertyItr = properties->begin();
+      for(; propertyItr != properties->end(); ++propertyItr)
+          stream_node.put<string>(propertyItr->first, propertyItr->second);
+
+      root.add_child(streamType, stream_node);
+  }
 
   stringstream ss;
   write_json(ss, root);

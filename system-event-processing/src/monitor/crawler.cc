@@ -25,6 +25,7 @@ void Crawler::Init()
 {
   this->SetCrawlerType();
   this->FetchStableMetaData();
+  this->FetchMetaData();
 }
 
 Crawler::~Crawler()
