@@ -14,22 +14,32 @@ using namespace boost::property_tree;
 
 char Monitor::machineName_[256];
 map<string, CrawlerStatus> Monitor::crawlers_;
+
 int Monitor::monitoringRate_ = 1;
 pthread_rwlock_t Monitor::stopSymbolrwlock_;
-bool Monitor::fetchDataServiceStop_ = false;
+bool Monitor::fetchDataServiceStop_ = false;    //  push data service is running by default
 pthread_mutex_t Monitor::dataFetchedMutex_ = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t Monitor::dataFetchedCond_ = PTHREAD_COND_INITIALIZER;
-bool Monitor::firstDataFetched_ = false;
+bool Monitor::firstDataFetched_ = false;    //  push data would not start until first batch of data is running
+
+bool Monitor::pushDataServiceStop_ = false; //  push data is running by default
+int Monitor::collectorDataPort_ = 32168; //  default data port for collector
+std::map<std::string, bool> Monitor::collectorStatus_;
+
+
+
+
+
 
 
 pthread_rwlock_t Monitor::collectorStatusrwlock_;
 int Monitor::collectorRegistrationPort_ = 32167; //  default registration port for collector
-int Monitor::collectorDataPort_ = 32168; //  default data port for collector
+
 int Monitor::communicationServicePort_ = 32100;
 int Monitor::commandServiceSocketFd = -1;
 bool Monitor::commandServiceStop_ = false;
-bool Monitor::pushDataServiceStop_ = false;
-std::map<std::string, bool> Monitor::collectorStatus_;
+
+
 
 
 Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond, int communicationServicePort, int collectorRegistrationPort,
@@ -354,96 +364,92 @@ void *Monitor::_PushDataMainThread(void *arg)
     if (true == stopService)
       break;
 
-    cout << compressedDynamicInfo << endl;
+//    cout << compressedDynamicInfo << endl;
 
-//    map<string, bool>::iterator collectorItr = collectorStatus_.begin();
-//    for (; collectorItr != collectorStatus_.end(); ++collectorItr)
-//    {
+    map<string, bool>::iterator collectorItr = collectorStatus_.begin();
+    for (; collectorItr != collectorStatus_.end(); ++collectorItr)
+    {
 //      if (false == collectorItr->second)
 //        continue;
-//
-//      DataPackage package;
-//      package.collectorIP = collectorItr->first;
-//      package.compressedContent = compressedDynamicInfo;
-//
-//      pthread_t workerPid;
-//      pthread_create(&workerPid, NULL, _PushDataWorkerThread, (void *) &package);
-//    }
+
+      DataPackage package;
+      package.collectorIP = collectorItr->first;
+      package.compressedContent = compressedDynamicInfo;
+
+      pthread_t workerPid;
+      pthread_create(&workerPid, NULL, _PushDataWorkerThread, (void *) &package);
+//      fprintf(stdout, "send %s to %s\n", package.compressedContent.c_str(), collectorItr->first.c_str());
+    }
 
     ThreadSleep(monitoringRate_, 0);
   }
   return NULL;
 }
-//
-///*!
-// * The worker thread to push data to a specified collector.
-// */
-//void *Monitor::_PushDataWorkerThread(void *arg)
-//{
-//  DataPackage *package = (DataPackage*) arg;
-//  string ip = package->collectorIP;
-//  string compressedDynamicInfo = package->compressedContent;
-//
-//  //  send compressed data to collector
-//  struct hostent *collectorHostent = NULL;
-//  struct sockaddr_in collectorAddress;
-//  int socketFd = socket(AF_INET, SOCK_STREAM, 0);
-//  if (socketFd < 0)
-//  {
-//    fprintf(stderr,
-//        "[%s] During push data to collectors, failed to create socket. Monitor terminated\n",
-//        GetCurrentTime().c_str());
-//    return NULL;
-//  }
-//
-//  if (collectorHostent != NULL
-//    )
-//    free(collectorHostent);
-//
-//  collectorHostent = gethostbyname(ip.c_str());
-//  if (collectorHostent == NULL)
-//  {
-//    fprintf(stderr,
-//        "[%s] During push data to collectors, no such collector with IP %s.\n",
-//        GetCurrentTime().c_str(), ip.c_str());
-//    close(socketFd);
-//    return NULL;
-//  }
-//
-//  bzero(&collectorAddress, sizeof(collectorAddress));
-//  collectorAddress.sin_family = AF_INET;
-//  bcopy((char *) collectorHostent->h_addr, (char *) &collectorAddress.sin_addr.s_addr, collectorHostent->h_length);
-//  collectorAddress.sin_port = htons(collectorRegistrationPort_);
-//  int numberOfTry = 0;
-//  pthread_rwlock_wrlock(&collectorStatusrwlock_);
-//  bool success = false;
-//  pthread_rwlock_unlock(&collectorStatusrwlock_);
-//  //  retry for 3 times
-//  while (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
-//  {
-//    if (++numberOfTry > 3)
-//      break;
-//  }
-//  if (false == success)
-//  {
-//    fprintf(stderr,
-//        "[%s] During push data to collectors, connect to collector [%s] failed.\n",
-//        GetCurrentTime().c_str(), ip.c_str());
-//    close(socketFd);
-//    return NULL;
-//  }
-//
-//  if (send(socketFd, compressedDynamicInfo.c_str(), strlen(compressedDynamicInfo.c_str()), 0) < 0)
-//  {
-//    fprintf(stderr,
-//        "[%s] During registration to collectors, failed to send the registration info.",
-//        GetCurrentTime().c_str());
-//    close(socketFd);
-//    return NULL;
-//  }
-//  close(socketFd);
-//  return NULL;
-//}
+
+/*!
+ * The worker thread to push data to a specified collector.
+ */
+void *Monitor::_PushDataWorkerThread(void *arg)
+{
+  DataPackage *package = (DataPackage*) arg;
+  string ip = package->collectorIP;
+  string compressedDynamicInfo = package->compressedContent;
+
+  //  send compressed data to collector
+  struct hostent *collectorHostent = NULL;
+  struct sockaddr_in collectorAddress;
+  int socketFd = socket(AF_INET, SOCK_STREAM, 0);
+  if (socketFd < 0)
+  {
+    fprintf(stderr, "[%s] During push data to collectors, failed to create socket. Monitor terminated\n",
+        GetCurrentTime().c_str());
+    return NULL;
+  }
+
+  if (collectorHostent != NULL)
+    free(collectorHostent);
+
+  collectorHostent = gethostbyname(ip.c_str());
+  if (collectorHostent == NULL)
+  {
+    fprintf(stderr, "[%s] During push data to collectors, no such collector with IP %s.\n",
+        GetCurrentTime().c_str(), ip.c_str());
+    close(socketFd);
+    return NULL;
+  }
+
+  bzero(&collectorAddress, sizeof(collectorAddress));
+  collectorAddress.sin_family = AF_INET;
+  bcopy((char *) collectorHostent->h_addr, (char *) &collectorAddress.sin_addr.s_addr, collectorHostent->h_length);
+  collectorAddress.sin_port = htons(collectorRegistrationPort_);
+  int numberOfTry = 0;
+  pthread_rwlock_wrlock(&collectorStatusrwlock_);
+  bool success = false;
+  pthread_rwlock_unlock(&collectorStatusrwlock_);
+  //  retry for 3 times
+  while (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
+  {
+    if (++numberOfTry > 3)
+      break;
+  }
+  if (false == success)
+  {
+    fprintf(stderr, "[%s] During push data to collectors, connect to collector [%s] failed.\n",
+        GetCurrentTime().c_str(), ip.c_str());
+    close(socketFd);
+    return NULL;
+  }
+
+  if (send(socketFd, compressedDynamicInfo.c_str(), strlen(compressedDynamicInfo.c_str()), 0) < 0)
+  {
+    fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info.",
+        GetCurrentTime().c_str());
+    close(socketFd);
+    return NULL;
+  }
+  close(socketFd);
+  return NULL;
+}
 //
 ///*!
 // * Assemble the stable meta-data grabbed by crawler into JSON format.

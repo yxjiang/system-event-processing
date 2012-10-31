@@ -160,19 +160,25 @@ private:
   /*    push data related task  */
   pthread_t pushDataServicePid_;
   static bool pushDataServiceStop_;
+  static int collectorDataPort_;
+  static std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
+
+
+
+
 
 
   static pthread_rwlock_t collectorStatusrwlock_;
 
   static int collectorRegistrationPort_;
-  static int collectorDataPort_;
+
 
   static int communicationServicePort_;
   static int commandServiceSocketFd;        //      file descriptor for command socket
   pthread_t communicationServicePid_;
   static bool commandServiceStop_;
 
-  static std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
+
 
 };
 
