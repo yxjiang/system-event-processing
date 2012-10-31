@@ -357,7 +357,8 @@ void *Monitor::_PushDataMainThread(void *arg)
 
   while (true)
   {
-    string compressedDynamicInfo = _AssembleDynamicMetaDataJson();
+    string compressedDynamicInfo = _AssembleDynamicMetaData();
+    cout << compressedDynamicInfo.c_str() << endl;
     pthread_rwlock_rdlock(&stopSymbolrwlock_);
     stopService = pushDataServiceStop_;
     pthread_rwlock_unlock(&stopSymbolrwlock_);
@@ -490,13 +491,13 @@ void *Monitor::_PushDataWorkerThread(void *arg)
 /*!
  * Assemble the dynamic meta-data grabbed by crawlers into JSON format.
  */
-const string Monitor::_AssembleDynamicMetaDataJson()
+const char *Monitor::_AssembleDynamicMetaData()
 {
   ptree root;
   map<string, CrawlerStatus>::iterator crawlerItr = crawlers_.begin();
   //  put timestamp of the first crawler
   ObserveData curData = crawlerItr->second.crawler->GetData();
-  root.put<string>("machineName", machineName_);         // set sender
+//  root.put<string>("machineName", machineName_);         // set sender
   root.put<long int>("timestamp", curData.timestamp);    //  set timestamp
 
   //  iterates all the crawlers to assemble the monitoring meta-data
@@ -522,7 +523,13 @@ const string Monitor::_AssembleDynamicMetaDataJson()
       fprintf(stderr, "size = 0\n");
   }
 
-  return strJson;
+  utility::MetaData metaData;
+  metaData.set_monitorname(machineName_);
+  metaData.set_jsonstring(strJson);
+
+//  cout << metaData.SerializeAsString() << endl;
+
+  return metaData.SerializeAsString().c_str();
 }
 
 }   //  end of namespace event

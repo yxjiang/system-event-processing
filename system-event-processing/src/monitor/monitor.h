@@ -141,7 +141,7 @@ private:
   /*!
    * Generate the json and return it as text.
    */
-  static const std::string _AssembleDynamicMetaDataJson();
+  static const char *_AssembleDynamicMetaData();
 
 
 
