@@ -535,11 +535,11 @@ int main(int argc, char *argv[])
 
   if(argc == 1 || argc < 2 || argc > 6)
   {
-    printf("usage: monitor ips [monitor-rate] [command-port] [collector-reg-port] [collector-data-port]\n");
-    printf("Options:");
-    printf("\tips\t\tList of IPs of collectors, separated by ','\n");
-    printf("\tmonitor-rate\t\tRate of monitoring in second, e.g. 3 indicates monitor the system every 3 seconds.\n");
-    printf("\tcommand-port\t\tPort number of command service. Default is 32100.\n");
+    printf("\nusage: monitor ips [monitor-rate] [command-port] [collector-reg-port] [collector-data-port]\n");
+    printf("Options:\n");
+    printf("\tips\t\t\t\tList of IPs of collectors, separated by ','.\n");
+    printf("\tmonitor-rate\t\t\tRate of monitoring in second, e.g. 3 indicates monitor the system every 3 seconds.\n");
+    printf("\tcommand-port\t\t\tPort number of command service. Default is 32100.\n");
     printf("\tcollector-reg-port\t\tRegistration port of remote collectors. Default is 32167.\n");
     printf("\tcollector-data-port\t\tData port of remote collectors. Default is 32168.\n");
     exit(1);
