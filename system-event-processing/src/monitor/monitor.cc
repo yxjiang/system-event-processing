@@ -421,16 +421,19 @@ void *Monitor::_PushDataWorkerThread(void *arg)
   bzero(&collectorAddress, sizeof(collectorAddress));
   collectorAddress.sin_family = AF_INET;
   bcopy((char *) collectorHostent->h_addr, (char *) &collectorAddress.sin_addr.s_addr, collectorHostent->h_length);
-  collectorAddress.sin_port = htons(collectorRegistrationPort_);
+  collectorAddress.sin_port = htons(collectorDataPort_);
   int numberOfTry = 0;
   pthread_rwlock_wrlock(&collectorStatusrwlock_);
-  bool success = false;
+  bool success = true;
   pthread_rwlock_unlock(&collectorStatusrwlock_);
   //  retry for 3 times
   while (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
   {
-    if (++numberOfTry > 3)
+    if (++numberOfTry > 3) {
+      success = false;
+      perror(NULL);
       break;
+    }
   }
   if (false == success)
   {
@@ -493,6 +496,7 @@ const string Monitor::_AssembleDynamicMetaDataJson()
   map<string, CrawlerStatus>::iterator crawlerItr = crawlers_.begin();
   //  put timestamp of the first crawler
   ObserveData curData = crawlerItr->second.crawler->GetData();
+  root.put<string>("machineName", machineName_);         // set sender
   root.put<long int>("timestamp", curData.timestamp);    //  set timestamp
 
   //  iterates all the crawlers to assemble the monitoring meta-data
