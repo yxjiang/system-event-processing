@@ -84,6 +84,7 @@ void Monitor::Run()
 //  _RegisterToCollectors();
 
   //  push data periodically to collectors
+
   pthread_create(&(this->pushDataServicePid_), NULL, _PushDataMainThread, NULL);
 
   //  wait for all threads to stop
@@ -146,11 +147,12 @@ void *Monitor::_CrawlerService(void *arg)
       break;
 
     crawler->FetchMetaData();
+    ThreadSleep(monitoringRate_, 0);
     pthread_mutex_lock(&dataFetchedMutex_);
     firstDataFetched_ = true;
     pthread_cond_signal(&dataFetchedCond_);
     pthread_mutex_unlock(&dataFetchedMutex_);
-    ThreadSleep(monitoringRate_, 0);
+
   }
   return NULL;
 }
@@ -335,7 +337,7 @@ void *Monitor::_PushDataMainThread(void *arg)
   bool stopService = false;
 
   pthread_mutex_lock(&dataFetchedMutex_);
-  while(true == firstDataFetched_)
+  while(false == firstDataFetched_)
     pthread_cond_wait(&dataFetchedCond_, &dataFetchedMutex_);
   pthread_mutex_unlock(&dataFetchedMutex_);
 
