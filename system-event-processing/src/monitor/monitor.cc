@@ -405,8 +405,8 @@ void *Monitor::_PushDataWorkerThread(void *arg)
   int socketFd = socket(AF_INET, SOCK_STREAM, 0);
   if (socketFd < 0)
   {
-    fprintf(stderr, "[%s] During push data to collectors, failed to create socket. Monitor terminated\n",
-        GetCurrentTime().c_str());
+    fprintf(stderr, "[%s] During push data to collectors, failed to create socket. Monitor terminated. Reason: %s.\n",
+        GetCurrentTime().c_str(), strerror(errno));
     return NULL;
   }
 
@@ -416,8 +416,8 @@ void *Monitor::_PushDataWorkerThread(void *arg)
   collectorHostent = gethostbyname(ip.c_str());
   if (collectorHostent == NULL)
   {
-    fprintf(stderr, "[%s] During push data to collectors, no such collector with IP %s.\n",
-        GetCurrentTime().c_str(), ip.c_str());
+    fprintf(stderr, "[%s] During push data to collectors, no such collector with IP %s. Reason: %s.\n",
+        GetCurrentTime().c_str(), ip.c_str(), strerror(errno));
     close(socketFd);
     return NULL;
   }
@@ -435,16 +435,15 @@ void *Monitor::_PushDataWorkerThread(void *arg)
   {
     if (++numberOfTry > 3) {
       success = false;
-      perror(NULL);
-      break;
+      fprintf(stderr, "[%s] During push data to collectors, connect to collector [%s] failed. Reason: %s.\n",
+          GetCurrentTime().c_str(), ip.c_str(), strerror(errno));
+      close(socketFd);
+      return NULL;
     }
   }
   if (false == success)
   {
-    fprintf(stderr, "[%s] During push data to collectors, connect to collector [%s] failed.\n",
-        GetCurrentTime().c_str(), ip.c_str());
-    close(socketFd);
-    return NULL;
+
   }
 
 //  int sendRet = 1;
@@ -461,8 +460,8 @@ void *Monitor::_PushDataWorkerThread(void *arg)
 //  }
   if (send(socketFd, compressedDynamicInfo.c_str(), strlen(compressedDynamicInfo.c_str()), 0) < 0)
   {
-    fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info.",
-        GetCurrentTime().c_str());
+    fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info. Reason: %s.\n",
+        GetCurrentTime().c_str(), strerror(errno));
     close(socketFd);
     return NULL;
   }

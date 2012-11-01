@@ -109,6 +109,7 @@ void *Collector::_DataReceiveWorker(void *arg)
   utility::MetaData metaData;
   metaData.ParseFromString(ss.str());
   cout << "uuid:" << metaData.monitoruuid() << endl;
+  cout << "json:" << metaData.jsonstring() << endl;
 
   close(*socketFd);
   return NULL;
