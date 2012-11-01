@@ -52,7 +52,7 @@ void protobuf_AssignDesc_utility_2eproto() {
       sizeof(CommunicationEvent));
   MetaData_descriptor_ = file->message_type(1);
   static const int MetaData_offsets_[2] = {
-    GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(MetaData, monitorname_),
+    GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(MetaData, monitoruuid_),
     GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(MetaData, jsonstring_),
   };
   MetaData_reflection_ =
@@ -103,7 +103,7 @@ void protobuf_AddDesc_utility_2eproto() {
     "\n\rutility.proto\022\007utility\"R\n\022Communicatio"
     "nEvent\022\021\n\teventType\030\001 \002(\t\022\023\n\013eventSource"
     "\030\002 \002(\t\022\024\n\014eventContent\030\003 \001(\t\"3\n\010MetaData"
-    "\022\023\n\013monitorName\030\001 \002(\t\022\022\n\njsonString\030\002 \002("
+    "\022\023\n\013monitorUUID\030\001 \002(\t\022\022\n\njsonString\030\003 \002("
     "\t", 161);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "utility.proto", &protobuf_RegisterTypes);
@@ -464,7 +464,7 @@ void CommunicationEvent::Swap(CommunicationEvent* other) {
 // ===================================================================
 
 #ifndef _MSC_VER
-const int MetaData::kMonitorNameFieldNumber;
+const int MetaData::kMonitorUUIDFieldNumber;
 const int MetaData::kJsonStringFieldNumber;
 #endif  // !_MSC_VER
 
@@ -484,7 +484,7 @@ MetaData::MetaData(const MetaData& from)
 
 void MetaData::SharedCtor() {
   _cached_size_ = 0;
-  monitorname_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+  monitoruuid_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
   jsonstring_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
   ::memset(_has_bits_, 0, sizeof(_has_bits_));
 }
@@ -494,8 +494,8 @@ MetaData::~MetaData() {
 }
 
 void MetaData::SharedDtor() {
-  if (monitorname_ != &::google::protobuf::internal::kEmptyString) {
-    delete monitorname_;
+  if (monitoruuid_ != &::google::protobuf::internal::kEmptyString) {
+    delete monitoruuid_;
   }
   if (jsonstring_ != &::google::protobuf::internal::kEmptyString) {
     delete jsonstring_;
@@ -526,9 +526,9 @@ MetaData* MetaData::New() const {
 
 void MetaData::Clear() {
   if (_has_bits_[0 / 32] & (0xffu << (0 % 32))) {
-    if (has_monitorname()) {
-      if (monitorname_ != &::google::protobuf::internal::kEmptyString) {
-        monitorname_->clear();
+    if (has_monitoruuid()) {
+      if (monitoruuid_ != &::google::protobuf::internal::kEmptyString) {
+        monitoruuid_->clear();
       }
     }
     if (has_jsonstring()) {
@@ -547,24 +547,24 @@ bool MetaData::MergePartialFromCodedStream(
   ::google::protobuf::uint32 tag;
   while ((tag = input->ReadTag()) != 0) {
     switch (::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(tag)) {
-      // required string monitorName = 1;
+      // required string monitorUUID = 1;
       case 1: {
         if (::google::protobuf::internal::WireFormatLite::GetTagWireType(tag) ==
             ::google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
           DO_(::google::protobuf::internal::WireFormatLite::ReadString(
-                input, this->mutable_monitorname()));
+                input, this->mutable_monitoruuid()));
           ::google::protobuf::internal::WireFormat::VerifyUTF8String(
-            this->monitorname().data(), this->monitorname().length(),
+            this->monitoruuid().data(), this->monitoruuid().length(),
             ::google::protobuf::internal::WireFormat::PARSE);
         } else {
           goto handle_uninterpreted;
         }
-        if (input->ExpectTag(18)) goto parse_jsonString;
+        if (input->ExpectTag(26)) goto parse_jsonString;
         break;
       }
       
-      // required string jsonString = 2;
-      case 2: {
+      // required string jsonString = 3;
+      case 3: {
         if (::google::protobuf::internal::WireFormatLite::GetTagWireType(tag) ==
             ::google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
          parse_jsonString:
@@ -598,22 +598,22 @@ bool MetaData::MergePartialFromCodedStream(
 
 void MetaData::SerializeWithCachedSizes(
     ::google::protobuf::io::CodedOutputStream* output) const {
-  // required string monitorName = 1;
-  if (has_monitorname()) {
+  // required string monitorUUID = 1;
+  if (has_monitoruuid()) {
     ::google::protobuf::internal::WireFormat::VerifyUTF8String(
-      this->monitorname().data(), this->monitorname().length(),
+      this->monitoruuid().data(), this->monitoruuid().length(),
       ::google::protobuf::internal::WireFormat::SERIALIZE);
     ::google::protobuf::internal::WireFormatLite::WriteString(
-      1, this->monitorname(), output);
+      1, this->monitoruuid(), output);
   }
   
-  // required string jsonString = 2;
+  // required string jsonString = 3;
   if (has_jsonstring()) {
     ::google::protobuf::internal::WireFormat::VerifyUTF8String(
       this->jsonstring().data(), this->jsonstring().length(),
       ::google::protobuf::internal::WireFormat::SERIALIZE);
     ::google::protobuf::internal::WireFormatLite::WriteString(
-      2, this->jsonstring(), output);
+      3, this->jsonstring(), output);
   }
   
   if (!unknown_fields().empty()) {
@@ -624,24 +624,24 @@ void MetaData::SerializeWithCachedSizes(
 
 ::google::protobuf::uint8* MetaData::SerializeWithCachedSizesToArray(
     ::google::protobuf::uint8* target) const {
-  // required string monitorName = 1;
-  if (has_monitorname()) {
+  // required string monitorUUID = 1;
+  if (has_monitoruuid()) {
     ::google::protobuf::internal::WireFormat::VerifyUTF8String(
-      this->monitorname().data(), this->monitorname().length(),
+      this->monitoruuid().data(), this->monitoruuid().length(),
       ::google::protobuf::internal::WireFormat::SERIALIZE);
     target =
       ::google::protobuf::internal::WireFormatLite::WriteStringToArray(
-        1, this->monitorname(), target);
+        1, this->monitoruuid(), target);
   }
   
-  // required string jsonString = 2;
+  // required string jsonString = 3;
   if (has_jsonstring()) {
     ::google::protobuf::internal::WireFormat::VerifyUTF8String(
       this->jsonstring().data(), this->jsonstring().length(),
       ::google::protobuf::internal::WireFormat::SERIALIZE);
     target =
       ::google::protobuf::internal::WireFormatLite::WriteStringToArray(
-        2, this->jsonstring(), target);
+        3, this->jsonstring(), target);
   }
   
   if (!unknown_fields().empty()) {
@@ -655,14 +655,14 @@ int MetaData::ByteSize() const {
   int total_size = 0;
   
   if (_has_bits_[0 / 32] & (0xffu << (0 % 32))) {
-    // required string monitorName = 1;
-    if (has_monitorname()) {
+    // required string monitorUUID = 1;
+    if (has_monitoruuid()) {
       total_size += 1 +
         ::google::protobuf::internal::WireFormatLite::StringSize(
-          this->monitorname());
+          this->monitoruuid());
     }
     
-    // required string jsonString = 2;
+    // required string jsonString = 3;
     if (has_jsonstring()) {
       total_size += 1 +
         ::google::protobuf::internal::WireFormatLite::StringSize(
@@ -696,8 +696,8 @@ void MetaData::MergeFrom(const ::google::protobuf::Message& from) {
 void MetaData::MergeFrom(const MetaData& from) {
   GOOGLE_CHECK_NE(&from, this);
   if (from._has_bits_[0 / 32] & (0xffu << (0 % 32))) {
-    if (from.has_monitorname()) {
-      set_monitorname(from.monitorname());
+    if (from.has_monitoruuid()) {
+      set_monitoruuid(from.monitoruuid());
     }
     if (from.has_jsonstring()) {
       set_jsonstring(from.jsonstring());
@@ -726,7 +726,7 @@ bool MetaData::IsInitialized() const {
 
 void MetaData::Swap(MetaData* other) {
   if (other != this) {
-    std::swap(monitorname_, other->monitorname_);
+    std::swap(monitoruuid_, other->monitoruuid_);
     std::swap(jsonstring_, other->jsonstring_);
     std::swap(_has_bits_[0], other->_has_bits_[0]);
     _unknown_fields_.Swap(&other->_unknown_fields_);

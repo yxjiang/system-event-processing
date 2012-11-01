@@ -18,6 +18,8 @@ pthread_rwlock_t Collector::stopSymbolrwlock_;
 Collector::Collector(vector<string> vecPeerCollectorIPs, int communicationPort, int dataPort)
 {
   dataServicePort_ = dataPort;
+  //  suppress the protobuf logger
+  google::protobuf::SetLogHandler(NULL);
 
   pthread_rwlock_init(&stopSymbolrwlock_, NULL);
 }
@@ -80,8 +82,6 @@ void *Collector::_DataReceiveService(void *arg)
     //  create worker to receive data
     pthread_t dataReceiveWorkerPid;
     pthread_create(&dataReceiveWorkerPid, NULL, _DataReceiveWorker, (void *)&connectionSockedFd);
-
-    close(connectionSockedFd);
   }
 
   close(dataReceiveServerSocketFd);
@@ -94,12 +94,23 @@ void *Collector::_DataReceiveWorker(void *arg)
   char buffer[1024];
   stringstream ss;
 
-  while(recv(*socketFd, buffer, 1024, 0) > 0)
+  int recvRet;
+  while((recvRet = recv(*socketFd, buffer, 1024, 0)) > 0)
   {
     ss << buffer;
   }
-  cout << ss.str() << endl;
+  if(recvRet < 0)
+  {
+    fprintf(stderr, "[%s] Receive data failed.\n", GetCurrentTime().c_str());
+    perror("error");
+  }
 
+//  cout << "[" << ss.str() << "]" << endl;
+  utility::MetaData metaData;
+  metaData.ParseFromString(ss.str());
+  cout << "uuid:" << metaData.monitoruuid() << endl;
+
+  close(*socketFd);
   return NULL;
 }
 

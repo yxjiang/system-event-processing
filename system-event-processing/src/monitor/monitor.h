@@ -20,6 +20,10 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/lexical_cast.hpp>
 #include "../common/common.h"
 #include "../common/utility.pb.h"
 #include "crawler.h"
@@ -147,6 +151,7 @@ private:
 
 
 private:
+  static std::string machineUuidStr_;
   static char machineName_[256];
   static std::map<std::string, CrawlerStatus> crawlers_;
 

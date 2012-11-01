@@ -12,6 +12,7 @@ namespace event
 using namespace std;
 using namespace boost::property_tree;
 
+string Monitor::machineUuidStr_;
 char Monitor::machineName_[256];
 map<string, CrawlerStatus> Monitor::crawlers_;
 
@@ -45,6 +46,8 @@ bool Monitor::commandServiceStop_ = false;
 Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond, int communicationServicePort, int collectorRegistrationPort,
     int collectorDataPort)
 {
+  boost::uuids::uuid uuid = boost::uuids::random_generator()();
+  machineUuidStr_ = boost::lexical_cast<std::string>(uuid);
   monitoringRate_ = rateInSecond;
   gethostname(this->machineName_, sizeof(this->machineName_));
   communicationServicePort_ = communicationServicePort;
@@ -444,6 +447,18 @@ void *Monitor::_PushDataWorkerThread(void *arg)
     return NULL;
   }
 
+//  int sendRet = 1;
+//  while(sendRet > 0)
+//  {
+//    sendRet = send(socketFd, compressedDynamicInfo.c_str(), strlen(compressedDynamicInfo.c_str()), 0);
+//    if(sendRet < 0)
+//    {
+//      fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info.",
+//          GetCurrentTime().c_str());
+//      close(socketFd);
+//      return NULL;
+//    }
+//  }
   if (send(socketFd, compressedDynamicInfo.c_str(), strlen(compressedDynamicInfo.c_str()), 0) < 0)
   {
     fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info.",
@@ -497,7 +512,7 @@ const char *Monitor::_AssembleDynamicMetaData()
   map<string, CrawlerStatus>::iterator crawlerItr = crawlers_.begin();
   //  put timestamp of the first crawler
   ObserveData curData = crawlerItr->second.crawler->GetData();
-//  root.put<string>("machineName", machineName_);         // set sender
+  root.put<string>("machineName", machineName_);         // set sender
   root.put<long int>("timestamp", curData.timestamp);    //  set timestamp
 
   //  iterates all the crawlers to assemble the monitoring meta-data
@@ -524,11 +539,10 @@ const char *Monitor::_AssembleDynamicMetaData()
   }
 
   utility::MetaData metaData;
-  metaData.set_monitorname(machineName_);
+  metaData.set_monitoruuid(machineUuidStr_);
   metaData.set_jsonstring(strJson);
 
-//  cout << metaData.SerializeAsString() << endl;
-
+//  return strJson.c_str();
   return metaData.SerializeAsString().c_str();
 }
 

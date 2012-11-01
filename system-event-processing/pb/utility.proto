@@ -7,8 +7,8 @@ message CommunicationEvent {
 }
 
 message MetaData {
-  required string monitorName = 1;
-  required string jsonString = 2;
+  required string monitorUUID = 1;
+  required string jsonString = 3;
 }
 
 

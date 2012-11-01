@@ -39,8 +39,9 @@ monitor: $(CRAWLER_SRC) $(MONITOR_SRC) $(COMMON_SRC)
 
 collector: $(COLLECTOR_SRC) $(COMMON_SRC)
 	g++ $(INCLUDE) $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)
+	g++ $(INCLUDE) $(FLAG) -c $(UTILITY_SRC) -o $(UTILITY_OBJ)
 	g++ $(FLAG) -c $(COLLECTOR_SRC) -o $(COLLECTOR_OBJ)
-	g++ $(FLAG) $(COLLECTOR_OBJ) $(COMMON_OBJ) $(LIBS) -o collector
+	g++ $(FLAG) $(COLLECTOR_OBJ) $(COMMON_OBJ) $(UTILITY_OBJ) $(LIBS) -o collector
 
 common-test: $(COMMON_TEST_SRC) $(COMMON_SRC)
 	g++ $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)

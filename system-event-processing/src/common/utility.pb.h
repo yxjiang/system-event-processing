@@ -205,21 +205,21 @@ class MetaData : public ::google::protobuf::Message {
   
   // accessors -------------------------------------------------------
   
-  // required string monitorName = 1;
-  inline bool has_monitorname() const;
-  inline void clear_monitorname();
-  static const int kMonitorNameFieldNumber = 1;
-  inline const ::std::string& monitorname() const;
-  inline void set_monitorname(const ::std::string& value);
-  inline void set_monitorname(const char* value);
-  inline void set_monitorname(const char* value, size_t size);
-  inline ::std::string* mutable_monitorname();
-  inline ::std::string* release_monitorname();
+  // required string monitorUUID = 1;
+  inline bool has_monitoruuid() const;
+  inline void clear_monitoruuid();
+  static const int kMonitorUUIDFieldNumber = 1;
+  inline const ::std::string& monitoruuid() const;
+  inline void set_monitoruuid(const ::std::string& value);
+  inline void set_monitoruuid(const char* value);
+  inline void set_monitoruuid(const char* value, size_t size);
+  inline ::std::string* mutable_monitoruuid();
+  inline ::std::string* release_monitoruuid();
   
-  // required string jsonString = 2;
+  // required string jsonString = 3;
   inline bool has_jsonstring() const;
   inline void clear_jsonstring();
-  static const int kJsonStringFieldNumber = 2;
+  static const int kJsonStringFieldNumber = 3;
   inline const ::std::string& jsonstring() const;
   inline void set_jsonstring(const ::std::string& value);
   inline void set_jsonstring(const char* value);
@@ -229,14 +229,14 @@ class MetaData : public ::google::protobuf::Message {
   
   // @@protoc_insertion_point(class_scope:utility.MetaData)
  private:
-  inline void set_has_monitorname();
-  inline void clear_has_monitorname();
+  inline void set_has_monitoruuid();
+  inline void clear_has_monitoruuid();
   inline void set_has_jsonstring();
   inline void clear_has_jsonstring();
   
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
   
-  ::std::string* monitorname_;
+  ::std::string* monitoruuid_;
   ::std::string* jsonstring_;
   
   mutable int _cached_size_;
@@ -434,65 +434,65 @@ inline ::std::string* CommunicationEvent::release_eventcontent() {
 
 // MetaData
 
-// required string monitorName = 1;
-inline bool MetaData::has_monitorname() const {
+// required string monitorUUID = 1;
+inline bool MetaData::has_monitoruuid() const {
   return (_has_bits_[0] & 0x00000001u) != 0;
 }
-inline void MetaData::set_has_monitorname() {
+inline void MetaData::set_has_monitoruuid() {
   _has_bits_[0] |= 0x00000001u;
 }
-inline void MetaData::clear_has_monitorname() {
+inline void MetaData::clear_has_monitoruuid() {
   _has_bits_[0] &= ~0x00000001u;
 }
-inline void MetaData::clear_monitorname() {
-  if (monitorname_ != &::google::protobuf::internal::kEmptyString) {
-    monitorname_->clear();
+inline void MetaData::clear_monitoruuid() {
+  if (monitoruuid_ != &::google::protobuf::internal::kEmptyString) {
+    monitoruuid_->clear();
   }
-  clear_has_monitorname();
+  clear_has_monitoruuid();
 }
-inline const ::std::string& MetaData::monitorname() const {
-  return *monitorname_;
+inline const ::std::string& MetaData::monitoruuid() const {
+  return *monitoruuid_;
 }
-inline void MetaData::set_monitorname(const ::std::string& value) {
-  set_has_monitorname();
-  if (monitorname_ == &::google::protobuf::internal::kEmptyString) {
-    monitorname_ = new ::std::string;
+inline void MetaData::set_monitoruuid(const ::std::string& value) {
+  set_has_monitoruuid();
+  if (monitoruuid_ == &::google::protobuf::internal::kEmptyString) {
+    monitoruuid_ = new ::std::string;
   }
-  monitorname_->assign(value);
+  monitoruuid_->assign(value);
 }
-inline void MetaData::set_monitorname(const char* value) {
-  set_has_monitorname();
-  if (monitorname_ == &::google::protobuf::internal::kEmptyString) {
-    monitorname_ = new ::std::string;
+inline void MetaData::set_monitoruuid(const char* value) {
+  set_has_monitoruuid();
+  if (monitoruuid_ == &::google::protobuf::internal::kEmptyString) {
+    monitoruuid_ = new ::std::string;
   }
-  monitorname_->assign(value);
+  monitoruuid_->assign(value);
 }
-inline void MetaData::set_monitorname(const char* value, size_t size) {
-  set_has_monitorname();
-  if (monitorname_ == &::google::protobuf::internal::kEmptyString) {
-    monitorname_ = new ::std::string;
+inline void MetaData::set_monitoruuid(const char* value, size_t size) {
+  set_has_monitoruuid();
+  if (monitoruuid_ == &::google::protobuf::internal::kEmptyString) {
+    monitoruuid_ = new ::std::string;
   }
-  monitorname_->assign(reinterpret_cast<const char*>(value), size);
+  monitoruuid_->assign(reinterpret_cast<const char*>(value), size);
 }
-inline ::std::string* MetaData::mutable_monitorname() {
-  set_has_monitorname();
-  if (monitorname_ == &::google::protobuf::internal::kEmptyString) {
-    monitorname_ = new ::std::string;
+inline ::std::string* MetaData::mutable_monitoruuid() {
+  set_has_monitoruuid();
+  if (monitoruuid_ == &::google::protobuf::internal::kEmptyString) {
+    monitoruuid_ = new ::std::string;
   }
-  return monitorname_;
+  return monitoruuid_;
 }
-inline ::std::string* MetaData::release_monitorname() {
-  clear_has_monitorname();
-  if (monitorname_ == &::google::protobuf::internal::kEmptyString) {
+inline ::std::string* MetaData::release_monitoruuid() {
+  clear_has_monitoruuid();
+  if (monitoruuid_ == &::google::protobuf::internal::kEmptyString) {
     return NULL;
   } else {
-    ::std::string* temp = monitorname_;
-    monitorname_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+    ::std::string* temp = monitoruuid_;
+    monitoruuid_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
     return temp;
   }
 }
 
-// required string jsonString = 2;
+// required string jsonString = 3;
 inline bool MetaData::has_jsonstring() const {
   return (_has_bits_[0] & 0x00000002u) != 0;
 }

@@ -15,6 +15,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <pthread.h>
+#include <errno.h>
 #include <boost/shared_ptr.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
