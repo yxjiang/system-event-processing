@@ -49,7 +49,8 @@ void *Collector::_DataReceiveService(void *arg)
   int dataReceiveServerSocketFd = socket(AF_INET, SOCK_STREAM, 0);
   if (dataReceiveServerSocketFd < 0)
   {
-    fprintf(stderr, "[%s] Collector data receive service creates socket failed.\n", GetCurrentTime().c_str());
+    fprintf(stderr, "[%s] Collector data receive service creates socket failed. Reason: %s.\n",
+        GetCurrentTime().c_str(), strerror(errno));
     exit(1);
   }
   else
@@ -58,7 +59,8 @@ void *Collector::_DataReceiveService(void *arg)
   //  bind socket and address
   if (bind(dataReceiveServerSocketFd, (struct sockaddr*) &dataRecieveServiceAddr, sizeof(dataRecieveServiceAddr)))
   {
-    fprintf(stderr, "[%s] Collector data receive service bind port: %d failed.\n", GetCurrentTime().c_str(), dataServicePort_);
+    fprintf(stderr, "[%s] Collector data receive service bind port: %d failed. Reason: %s.\n",
+        GetCurrentTime().c_str(), dataServicePort_, strerror(errno));
     close(dataReceiveServerSocketFd);
     exit(1);
   }
@@ -68,7 +70,8 @@ void *Collector::_DataReceiveService(void *arg)
   //  listen
   if (listen(dataReceiveServerSocketFd, 500))
   {
-    fprintf(stderr, "[%s] Collector data receive service listen failed.\n", GetCurrentTime().c_str());
+    fprintf(stderr, "[%s] Collector data receive service listen failed. Reason: %s.\n",
+        GetCurrentTime().c_str(), strerror(errno));
     close(dataReceiveServerSocketFd);
     exit(1);
   }
@@ -101,8 +104,7 @@ void *Collector::_DataReceiveWorker(void *arg)
   }
   if(recvRet < 0)
   {
-    fprintf(stderr, "[%s] Receive data failed.\n", GetCurrentTime().c_str());
-    perror("error");
+    fprintf(stderr, "[%s] Receive data failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
   }
 
 //  cout << "[" << ss.str() << "]" << endl;
