@@ -56,6 +56,36 @@ ObserveData Crawler::GetData()
   return data;
 }
 
+
+DummyCrawler::DummyCrawler() : Crawler()
+{
+  //  do nothing more
+}
+
+DummyCrawler::~DummyCrawler()
+{
+  //  do nothing more
+}
+
+void DummyCrawler::FetchMetaData()
+{
+  boost::shared_ptr<map<string, string> > shared_map(new map<string, string>);
+  pthread_rwlock_wrlock(&rwlock_);
+  time(&(curData_.timestamp));
+  curData_.properties_ = shared_map;
+  pthread_rwlock_unlock(&rwlock_);
+}
+
+void DummyCrawler::SetCrawlerType()
+{
+  type_ = "DummyCrawler";
+}
+
+void DummyCrawler::FetchStableMetaData()
+{
+  stableMetaData_.insert(make_pair<string, string>("DummyStable", "DummyStableData"));
+}
+
 std::string CPUCrawler::statFile_ = "/proc/stat";
 
 CPUCrawler::CPUCrawler(Mode mode)

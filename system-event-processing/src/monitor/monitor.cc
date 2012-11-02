@@ -171,6 +171,7 @@ void *Monitor::_CrawlerService(void *arg)
     pthread_mutex_unlock(&dataFetchedMutex_);
 
   }
+  pthread_exit(NULL);
   return NULL;
 }
 
@@ -387,6 +388,7 @@ void *Monitor::_PushDataMainThread(void *arg)
 
     ThreadSleep(monitoringRate_, 0);
   }
+  pthread_exit(NULL);
   return NULL;
 }
 
@@ -466,6 +468,7 @@ void *Monitor::_PushDataWorkerThread(void *arg)
     return NULL;
   }
   close(socketFd);
+  pthread_exit(NULL);
   return NULL;
 }
 //
@@ -589,8 +592,10 @@ int main(int argc, char *argv[])
 
   CPUCrawler *cpuCrawler = new CPUCrawler;
   cpuCrawler->Init();
+  DummyCrawler *dummyCrawler = new DummyCrawler;
+  dummyCrawler->Init();
   Monitor monitor(vecIPs, monitorRate, commandPort, collectorRegistrationPort, collectorDataPort);
-  monitor.Attach(cpuCrawler);
+  monitor.Attach(dummyCrawler);
   monitor.Run();
 
   return 0;

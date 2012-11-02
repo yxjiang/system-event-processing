@@ -93,6 +93,22 @@ protected:
   pthread_rwlock_t rwlock_;
 };
 
+class DummyCrawler : public Crawler
+{
+public:
+  DummyCrawler();
+  virtual ~DummyCrawler();
+
+  void FetchMetaData();
+
+protected:
+  void SetCrawlerType();
+  void FetchStableMetaData();
+
+private:
+
+};
+
 /*
  * Crawl that fetch the data of
  */

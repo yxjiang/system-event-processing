@@ -88,6 +88,7 @@ void *Collector::_DataReceiveService(void *arg)
   }
 
   close(dataReceiveServerSocketFd);
+  pthread_exit(NULL);
   return NULL;
 }
 
@@ -100,7 +101,7 @@ void *Collector::_DataReceiveWorker(void *arg)
   int recvRet;
   while((recvRet = recv(*socketFd, buffer, 1024, 0)) > 0)
   {
-    ss << buffer;
+//    ss << buffer;
   }
   if(recvRet < 0)
   {
@@ -108,12 +109,13 @@ void *Collector::_DataReceiveWorker(void *arg)
   }
 
 //  cout << "[" << ss.str() << "]" << endl;
-  utility::MetaData metaData;
-  metaData.ParseFromString(ss.str());
-  cout << "uuid:" << metaData.monitoruuid() << endl;
-  cout << "json:" << metaData.jsonstring() << endl;
+//  utility::MetaData metaData;
+//  metaData.ParseFromString(ss.str());
+//  cout << "uuid:" << metaData.monitoruuid() << endl;
+//  cout << "json:" << metaData.jsonstring() << endl;
 
   close(*socketFd);
+  pthread_exit(NULL);
   return NULL;
 }
 
