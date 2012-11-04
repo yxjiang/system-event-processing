@@ -14,20 +14,20 @@ using namespace std;
 int Collector::dataServicePort_ = 32168;    //  default port number to receive data
 bool Collector::dataServiceStop_ = false;    //  data service is running by default
 pthread_rwlock_t Collector::stopSymbolrwlock_;
-pthread_attr_t Collector::workThreadAttr;
+pthread_attr_t Collector::threadAttr;
 
 Collector::Collector(vector<string> vecPeerCollectorIPs, int communicationPort, int dataPort)
 {
   dataServicePort_ = dataPort;
   //  suppress the protobuf logger
   google::protobuf::SetLogHandler(NULL);
-  int ret = pthread_attr_init(&workThreadAttr);
+  int ret = pthread_attr_init(&threadAttr);
   if(ret != 0)
   {
     fprintf(stderr, "[%s] Initialize thread attribute failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
     exit(1);
   }
-  ret = pthread_attr_setdetachstate(&workThreadAttr, PTHREAD_CREATE_DETACHED);
+  ret = pthread_attr_setdetachstate(&threadAttr, PTHREAD_CREATE_DETACHED);
   if(ret != 0)
   {
     fprintf(stderr, "[%s] Set thread attribute failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
@@ -45,7 +45,7 @@ Collector::~Collector()
 void Collector::Run()
 {
   pthread_t dataServicePid;
-  pthread_create(&dataServicePid, NULL, _DataReceiveService, NULL);
+  pthread_create(&dataServicePid, &threadAttr, _DataReceiveService, NULL);
 
   pthread_join(dataServicePid, NULL);
 }
@@ -105,7 +105,7 @@ void *Collector::_DataReceiveService(void *arg)
 
     //  create worker to receive data
     pthread_t dataReceiveWorkerPid;
-    pthread_create(&dataReceiveWorkerPid, &workThreadAttr, _DataReceiveWorker, (void *)&connectionSockedFd);
+    pthread_create(&dataReceiveWorkerPid, &threadAttr, _DataReceiveWorker, (void *)&connectionSockedFd);
   }
 
   close(dataReceiveServerSocketFd);

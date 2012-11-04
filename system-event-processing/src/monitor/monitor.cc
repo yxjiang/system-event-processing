@@ -26,7 +26,7 @@ bool Monitor::firstDataFetched_ = false;    //  push data would not start until 
 bool Monitor::pushDataServiceStop_ = false; //  push data is running by default
 int Monitor::collectorDataPort_ = 32168; //  default data port for collector
 std::map<std::string, bool> Monitor::collectorStatus_;
-pthread_attr_t Monitor::workTrheadAttr;
+pthread_attr_t Monitor::threadAttr;
 
 
 
@@ -60,13 +60,13 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond, int
     collectorStatus_.insert(make_pair<string, bool>(vecCollectorIps[i], false));
 
   //  initialize work thread attribute
-  int ret = pthread_attr_init(&workTrheadAttr);
+  int ret = pthread_attr_init(&threadAttr);
   if(ret != 0)
   {
     fprintf(stderr, "[%s] Initialize thread attribute failed. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
     exit(1);
   }
-  ret = pthread_attr_setdetachstate(&workTrheadAttr, PTHREAD_CREATE_DETACHED);    //  make work thread resource immediately available when finished
+  ret = pthread_attr_setdetachstate(&threadAttr, PTHREAD_CREATE_DETACHED);    //  make work thread resource immediately available when finished
   if(ret != 0)
   {
     fprintf(stderr, "[%s] Set thread attribute failed. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
@@ -96,7 +96,7 @@ Monitor::~Monitor()
 //  close(this->commandServiceSocketFd);
 
   //  release resource
-  pthread_attr_destroy(&workTrheadAttr);
+  pthread_attr_destroy(&threadAttr);
   pthread_rwlock_destroy(&stopSymbolrwlock_);
   pthread_rwlock_destroy(&collectorStatusrwlock_);
 }
@@ -106,7 +106,7 @@ void Monitor::Run()
   //  start all crawlers
   map<string, CrawlerStatus>::iterator itr = crawlers_.begin();
   for (; itr != crawlers_.end(); ++itr)
-    pthread_create(&(itr->second.pid), NULL, _CrawlerService, (void*) (itr->second.crawler));
+    pthread_create(&(itr->second.pid), &threadAttr, _CrawlerService, (void*) (itr->second.crawler));
 
 //  //  initialize communication service
 //  pthread_create(&(this->communicationServicePid_), NULL, _CommandService,
@@ -118,7 +118,7 @@ void Monitor::Run()
 
   //  push data periodically to collectors
 
-  pthread_create(&(this->pushDataServicePid_), NULL, _PushDataMainThread, NULL);
+  pthread_create(&(this->pushDataServicePid_), &threadAttr, _PushDataMainThread, NULL);
 
   //  wait for all threads to stop
   itr = crawlers_.begin();
@@ -398,7 +398,7 @@ void *Monitor::_PushDataMainThread(void *arg)
       package.compressedContent = compressedDynamicInfo;
 
       pthread_t workerPid;
-      pthread_create(&workerPid, &workTrheadAttr, _PushDataWorkerThread, (void *) &package);
+      pthread_create(&workerPid, &threadAttr, _PushDataWorkerThread, (void *) &package);
 //      fprintf(stdout, "send %s to %s\n", package.compressedContent.c_str(), collectorItr->first.c_str());
     }
 
