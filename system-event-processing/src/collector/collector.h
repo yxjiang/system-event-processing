@@ -41,6 +41,7 @@ private:
   static int dataServicePort_;
   static bool dataServiceStop_;
   static pthread_rwlock_t stopSymbolrwlock_;
+  static pthread_attr_t workThreadAttr;
 
 };
 

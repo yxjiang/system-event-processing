@@ -14,12 +14,25 @@ using namespace std;
 int Collector::dataServicePort_ = 32168;    //  default port number to receive data
 bool Collector::dataServiceStop_ = false;    //  data service is running by default
 pthread_rwlock_t Collector::stopSymbolrwlock_;
+pthread_attr_t Collector::workThreadAttr;
 
 Collector::Collector(vector<string> vecPeerCollectorIPs, int communicationPort, int dataPort)
 {
   dataServicePort_ = dataPort;
   //  suppress the protobuf logger
   google::protobuf::SetLogHandler(NULL);
+  int ret = pthread_attr_init(&workThreadAttr);
+  if(ret != 0)
+  {
+    fprintf(stderr, "[%s] Initialize thread attribute failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
+  ret = pthread_attr_setdetachstate(&workThreadAttr, PTHREAD_CREATE_DETACHED);
+  if(ret != 0)
+  {
+    fprintf(stderr, "[%s] Set thread attribute failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
 
   pthread_rwlock_init(&stopSymbolrwlock_, NULL);
 }
@@ -78,13 +91,21 @@ void *Collector::_DataReceiveService(void *arg)
   else
     fprintf(stdout, "[%s] Collector data receive service listening on port %d...\n", GetCurrentTime().c_str(), dataServicePort_);
 
+  int count = 0;
   while (true)
   {
+    if(++count % 100 == 0)
+      fprintf(stdout, "[%s] Received %d requests.\n", GetCurrentTime().c_str(), count);
     int connectionSockedFd = accept(dataReceiveServerSocketFd, NULL, 0);
+    if(connectionSockedFd < 0)
+    {
+      fprintf(stderr, "[%s] Received error request. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      continue;
+    }
 
     //  create worker to receive data
     pthread_t dataReceiveWorkerPid;
-    pthread_create(&dataReceiveWorkerPid, NULL, _DataReceiveWorker, (void *)&connectionSockedFd);
+    pthread_create(&dataReceiveWorkerPid, &workThreadAttr, _DataReceiveWorker, (void *)&connectionSockedFd);
   }
 
   close(dataReceiveServerSocketFd);
