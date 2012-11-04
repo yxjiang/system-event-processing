@@ -26,6 +26,7 @@ bool Monitor::firstDataFetched_ = false;    //  push data would not start until 
 bool Monitor::pushDataServiceStop_ = false; //  push data is running by default
 int Monitor::collectorDataPort_ = 32168; //  default data port for collector
 std::map<std::string, bool> Monitor::collectorStatus_;
+pthread_attr_t Monitor::workTrheadAttr;
 
 
 
@@ -58,6 +59,20 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond, int
   for(size_t i = 0; i < vecCollectorIps.size(); ++i)
     collectorStatus_.insert(make_pair<string, bool>(vecCollectorIps[i], false));
 
+  //  initialize work thread attribute
+  int ret = pthread_attr_init(&workTrheadAttr);
+  if(ret != 0)
+  {
+    fprintf(stderr, "[%s] Initialize thread attribute failed. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
+  ret = pthread_attr_setdetachstate(&workTrheadAttr, PTHREAD_CREATE_DETACHED);    //  make work thread resource immediately available when finished
+  if(ret != 0)
+  {
+    fprintf(stderr, "[%s] Set thread attribute failed. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
+
   //  initialize locks
   pthread_rwlock_init(&stopSymbolrwlock_, NULL);
   pthread_rwlock_init(&collectorStatusrwlock_, NULL);
@@ -80,7 +95,8 @@ Monitor::~Monitor()
   //  close socket
 //  close(this->commandServiceSocketFd);
 
-  //  destroy locks
+  //  release resource
+  pthread_attr_destroy(&workTrheadAttr);
   pthread_rwlock_destroy(&stopSymbolrwlock_);
   pthread_rwlock_destroy(&collectorStatusrwlock_);
 }
@@ -382,7 +398,7 @@ void *Monitor::_PushDataMainThread(void *arg)
       package.compressedContent = compressedDynamicInfo;
 
       pthread_t workerPid;
-      pthread_create(&workerPid, NULL, _PushDataWorkerThread, (void *) &package);
+      pthread_create(&workerPid, &workTrheadAttr, _PushDataWorkerThread, (void *) &package);
 //      fprintf(stdout, "send %s to %s\n", package.compressedContent.c_str(), collectorItr->first.c_str());
     }
 
@@ -432,7 +448,7 @@ void *Monitor::_PushDataWorkerThread(void *arg)
   pthread_rwlock_wrlock(&collectorStatusrwlock_);
   bool success = true;
   pthread_rwlock_unlock(&collectorStatusrwlock_);
-  //  retry for 3 times
+  //    retry for 3 times
   while (connect(socketFd, (struct sockaddr*) &collectorAddress, sizeof(collectorAddress)) < 0)
   {
     if (++numberOfTry > 3) {
@@ -443,23 +459,7 @@ void *Monitor::_PushDataWorkerThread(void *arg)
       return NULL;
     }
   }
-  if (false == success)
-  {
 
-  }
-
-//  int sendRet = 1;
-//  while(sendRet > 0)
-//  {
-//    sendRet = send(socketFd, compressedDynamicInfo.c_str(), strlen(compressedDynamicInfo.c_str()), 0);
-//    if(sendRet < 0)
-//    {
-//      fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info.",
-//          GetCurrentTime().c_str());
-//      close(socketFd);
-//      return NULL;
-//    }
-//  }
   if (send(socketFd, compressedDynamicInfo.c_str(), strlen(compressedDynamicInfo.c_str()), 0) < 0)
   {
     fprintf(stderr, "[%s] During registration to collectors, failed to send the registration info. Reason: %s.\n",
@@ -595,7 +595,8 @@ int main(int argc, char *argv[])
   DummyCrawler *dummyCrawler = new DummyCrawler;
   dummyCrawler->Init();
   Monitor monitor(vecIPs, monitorRate, commandPort, collectorRegistrationPort, collectorDataPort);
-  monitor.Attach(dummyCrawler);
+//  monitor.Attach(dummyCrawler);
+  monitor.Attach(cpuCrawler);
   monitor.Run();
 
   return 0;

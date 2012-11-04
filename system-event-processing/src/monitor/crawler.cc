@@ -50,9 +50,9 @@ std::map<std::string, std::string> Crawler::GetStableData() const
 
 ObserveData Crawler::GetData()
 {
-  pthread_rwlock_rdlock(&rwlock_);
+//  pthread_rwlock_rdlock(&rwlock_);
   ObserveData data = curData_;
-  pthread_rwlock_unlock(&rwlock_);
+//  pthread_rwlock_unlock(&rwlock_);
   return data;
 }
 
@@ -60,6 +60,8 @@ ObserveData Crawler::GetData()
 DummyCrawler::DummyCrawler() : Crawler()
 {
   //  do nothing more
+  boost::shared_ptr<map<string, string> > shared_map(new map<string, string>);
+  curData_.properties_ = shared_map;
 }
 
 DummyCrawler::~DummyCrawler()
@@ -69,11 +71,11 @@ DummyCrawler::~DummyCrawler()
 
 void DummyCrawler::FetchMetaData()
 {
-  boost::shared_ptr<map<string, string> > shared_map(new map<string, string>);
-  pthread_rwlock_wrlock(&rwlock_);
-  time(&(curData_.timestamp));
-  curData_.properties_ = shared_map;
-  pthread_rwlock_unlock(&rwlock_);
+//  boost::shared_ptr<map<string, string> > shared_map(new map<string, string>);
+//  pthread_rwlock_wrlock(&rwlock_);
+//  time(&(curData_.timestamp));
+//  curData_.properties_ = shared_map;
+//  pthread_rwlock_unlock(&rwlock_);
 }
 
 void DummyCrawler::SetCrawlerType()
@@ -85,6 +87,8 @@ void DummyCrawler::FetchStableMetaData()
 {
   stableMetaData_.insert(make_pair<string, string>("DummyStable", "DummyStableData"));
 }
+
+
 
 std::string CPUCrawler::statFile_ = "/proc/stat";
 

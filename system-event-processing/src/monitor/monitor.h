@@ -168,7 +168,7 @@ private:
   static bool pushDataServiceStop_;
   static int collectorDataPort_;
   static std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
-
+  static pthread_attr_t workTrheadAttr;
 
 
 
