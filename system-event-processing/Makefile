@@ -19,6 +19,9 @@ COMMON_OBJ := common.o
 COMMON_TEST_SRC := test/common/common_test.cc
 COMMON_TEST_OBJ := common-test.o
 
+STREAM_SRC := src/common/eventstream.cc
+STREAM_OBJ := eventstream.o
+
 CRAWLER_OBJ := crawler.o
 MONITOR_OBJ := monitor.o
 
@@ -28,14 +31,19 @@ COLLECTOR_OBJ := collector.o
 crawler: $(CRAWLER_SRC) $(COMMON_SRC)
 	g++ $(INCLUDE) $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)
 	g++ $(INCLUDE) $(FLAG) -c $(CRAWLER_SRC) -o $(CRAWLER_OBJ)
-	g++ $(INCLUDE) $(FLAG) $(CRAWLER_OBJ) $(COMMON_OBJ) $(LIBS) -o crawler
-
-monitor: $(CRAWLER_SRC) $(MONITOR_SRC) $(COMMON_SRC)
+	
+eventstream: $(STREAM_SRC) $(COMMON_SRC)
+	g++ $(INCLUDE) $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)
+	g++ $(INCLUDE) $(FLAG) -c $(STREAM_SRC) -o $(STREAM_OBJ)
+	g++ $(INCLUDE) $(FLAG) $(STREAM_OBJ) $(COMMON_OBJ) $(UTILITY_OBJ) $(LIBS) -o eventstream
+	
+monitor: $(CRAWLER_SRC) $(MONITOR_SRC) $(COMMON_SRC) $(STREAM_SRC)
 	g++ $(INCLUDE) $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)
 	g++ $(INCLUDE) $(FLAG) -c $(UTILITY_SRC) -o $(UTILITY_OBJ)
 	g++ $(INCLUDE) $(FLAG) -c $(CRAWLER_SRC) -o $(CRAWLER_OBJ)
+	g++ $(INCLUDE) $(FLAG) -c $(STREAM_SRC) -o $(STREAM_OBJ)
 	g++ $(INCLUDE) $(FLAG) -c $(MONITOR_SRC) -o $(MONITOR_OBJ)
-	g++ $(INCLUDE) $(FLAG) $(CRAWLER_OBJ) $(MONITOR_OBJ) $(COMMON_OBJ) $(UTILITY_OBJ) $(LIBS) -o monitor
+	g++ $(INCLUDE) $(FLAG) $(CRAWLER_OBJ) $(STREAM_OBJ) $(MONITOR_OBJ) $(COMMON_OBJ) $(UTILITY_OBJ) $(LIBS) -o monitor
 
 collector: $(COLLECTOR_SRC) $(COMMON_SRC)
 	g++ $(INCLUDE) $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)

@@ -16,7 +16,7 @@ int GetCPUCount() {
   CPU_ZERO(&cs);
   sched_getaffinity(0, sizeof(cs), &cs);
   int count = 0;
-  for (int i = 0; i < 32; i++)
+  for (int i = 0; i < 128; i++)
     if (CPU_ISSET(i, &cs))
       count++;
   return count;

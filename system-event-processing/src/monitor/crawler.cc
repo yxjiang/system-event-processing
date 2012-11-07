@@ -50,9 +50,9 @@ std::map<std::string, std::string> Crawler::GetStableData() const
 
 ObserveData Crawler::GetData()
 {
-//  pthread_rwlock_rdlock(&rwlock_);
+  pthread_rwlock_rdlock(&rwlock_);
   ObserveData data = curData_;
-//  pthread_rwlock_unlock(&rwlock_);
+  pthread_rwlock_unlock(&rwlock_);
   return data;
 }
 

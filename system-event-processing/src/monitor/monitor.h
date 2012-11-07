@@ -25,8 +25,10 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/lexical_cast.hpp>
 #include "../common/common.h"
+#include "../common/eventstream.h"
 #include "../common/utility.pb.h"
 #include "crawler.h"
+
 
 namespace event
 {
@@ -47,6 +49,13 @@ typedef struct
   std::string compressedContent;
 } DataPackage;
 
+typedef struct
+{
+  std::string content;
+} CommandPackage;
+
+typedef SimpleLockStream EventStream;
+
 /*!
  * A monitor is deployed on a single machine.
  * It periodically grabs the system utilization data and push it to collector.
@@ -65,9 +74,10 @@ public:
    * \param     commandPort     The port number for monitor to communicate with collectors.
    * \param     vecCollectorIps The list of IPs for all the collectors.
    * \param     rateInSecond    The monitoring rate, default is 1 second.
+   * \param     streamSize      The maximal size of the stream.
    */
-  Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond = 1, int commandPort = 32100, int collectorRegistrationPort = 32167,
-      int collectorDataPort = 32168);
+  Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond = 1, int streamSize = 60,
+      int commandPort = 32100, int collectorRegistrationPort = 32167, int collectorDataPort = 32168);
 
   /*!
    * Deinitialize the monitor.
@@ -105,21 +115,25 @@ private:
    * The thread function entry for fetching data.
    */
   static void *_CrawlerService(void *arg);
-  /*!
-   * Thread entry function.
-   * Push the meta-data to collectors periodically.
-   */
-  static void *_PushDataMainThread(void *arg);
-
-  /*!
-   * The worker thread to push data to specified collector
-   */
-  static void *_PushDataWorkerThread(void *arg);
-
 //  /*!
-//   * The thread entry function for command service task.
+//   * Thread entry function.
+//   * Push the meta-data to collectors periodically.
 //   */
-//  static void *_CommandService(void *arg);
+//  static void *_PushDataMainThread(void *arg);
+//
+//  /*!
+//   * The worker thread to push data to specified collector
+//   */
+//  static void *_PushDataWorkerThread(void *arg);
+
+  /*!
+   * The thread entry function for command service task.
+   */
+  static void *_CommandService(void *arg);
+  /*!
+   * Worker to handle command.
+   */
+  static void *_CommandServiceWorker(void *arg);
 //
 //  /*!
 //   * Register to the collectors by sending the profiles of the monitor.
@@ -143,6 +157,10 @@ private:
 //  static const std::string _AssembleStatbleMetaDataJson();
 //
   /*!
+   * Collect data from crawlers and put into stream.
+   */
+  static void *_CollectDataFromCrawlers(void *arg);
+  /*!
    * Generate the json and return it as text.
    */
   static const char *_AssembleDynamicMetaData();
@@ -154,21 +172,29 @@ private:
   static std::string machineUuidStr_;
   static char machineName_[256];
   static std::map<std::string, CrawlerStatus> crawlers_;
+  static EventStream stream_;
+  pthread_t collectThreadPid_;
 
   /*    fetch data task related     */
   static int monitoringRate_;
-  static pthread_rwlock_t stopSymbolrwlock_;
   static bool fetchDataServiceStop_;
   static pthread_mutex_t dataFetchedMutex_;
   static pthread_cond_t dataFetchedCond_;
   static bool firstDataFetched_;
 
+  /*    communication related  */
+  static int communicationServicePort_;
+  static int commandServiceSocketFd;        //  file descriptor for command socket
+  static bool commandServiceStop_;          //  indicating whether command service is stopped
+  pthread_t communicationServicePid_;
+
+
   /*    push data related task  */
-  pthread_t pushDataServicePid_;
-  static bool pushDataServiceStop_;
+//  pthread_t pushDataServicePid_;
+//  static bool pushDataServiceStop_;
   static int collectorDataPort_;
   static std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
-  static pthread_attr_t threadAttr;
+  static pthread_attr_t threadAttr_;
 
 
 
@@ -177,14 +203,6 @@ private:
   static pthread_rwlock_t collectorStatusrwlock_;
 
   static int collectorRegistrationPort_;
-
-
-  static int communicationServicePort_;
-  static int commandServiceSocketFd;        //      file descriptor for command socket
-  pthread_t communicationServicePid_;
-  static bool commandServiceStop_;
-
-
 
 };
 
