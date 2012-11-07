@@ -26,6 +26,9 @@ const unsigned long int CRAWLER_SLEEP_TIME_NANOSEC = 50000000;
 /*  sample interval, 50 millisecond */
 const unsigned long int CRAWLER_SAMPLE_TIME_NANOSEC = 50000000;
 
+const char *MULTICAST_GROUP = "225.0.0.66";
+const int MULTICAST_PORT = "32100";
+
 /*!
  * Convert time_t data structure into string.
  * \param   timestamp    The timestamp needs to be transformed.

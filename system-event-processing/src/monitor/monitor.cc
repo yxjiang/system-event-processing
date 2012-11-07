@@ -201,9 +201,11 @@ void *Monitor::_CommandService(void *arg)
   bzero(&serverAddr, sizeof(serverAddr));
   serverAddr.sin_family = AF_INET;
   serverAddr.sin_addr.s_addr = htons(INADDR_ANY);
-  serverAddr.sin_port = htons(communicationServicePort_);
+  serverAddr.sin_port = htons(MULTICAST_PORT);
+  struct ip_mreq multicastRequest;  //  multicast request
+  u_int yes = 1;
 
-  commandServiceSocketFd = socket(AF_INET, SOCK_STREAM, 0);
+  commandServiceSocketFd = socket(AF_INET, SOCK_DGRAM, 0);
   if (commandServiceSocketFd < 0)
   {
     fprintf(stderr, "[%s] Monitor communication service creates socket failed.\n", GetCurrentTime().c_str());
@@ -211,6 +213,13 @@ void *Monitor::_CommandService(void *arg)
   }
   else
     printf("[%s] Monitor communication service socket created...\n", GetCurrentTime().c_str());
+
+  //  allow multiple sockets to use the same PORT number
+  if(setsockopt(commandServiceSocketFd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
+  {
+    fprintf(stderr, "[%s] Monitor communication service set multicast failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
 
   //  bind socket and address
   if (bind(commandServiceSocketFd, (struct sockaddr*) &serverAddr, sizeof(serverAddr)))
@@ -220,6 +229,11 @@ void *Monitor::_CommandService(void *arg)
   }
   else
     printf("[%s] Monitor communication service port binded to port %d...\n", GetCurrentTime().c_str(), communicationServicePort_);
+
+  multicastRequest.imr_multiaddr.s_addr = inet_addr(MULTICAST_GROUP);
+  multicastRequest.imr_interface.s_addr = htons(INADDR_ANY);
+
+
 
   //  listen on port
   if (listen(commandServiceSocketFd, 5))
