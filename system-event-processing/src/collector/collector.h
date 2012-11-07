@@ -31,6 +31,12 @@ namespace event
 
 typedef struct
 {
+  const char *machineName;
+  time_t lastCommunicationTime;
+} MonitorProfile;
+
+typedef struct
+{
   boost::uuids::uuid uuid;
   const char *queryContent;
   long lastCalled;
@@ -67,6 +73,8 @@ protected:
 //  static void *_DataReceiveWorker(void *arg);
 
 private:
+  static std::vector<MonitorProfile*> monitorProfile_;
+  static pthread_rwlock_t monitorProfileRwLock_;
   static pthread_attr_t threadAttr_;
   static pthread_t commandServicePid_;
   static int commandServicePort_;

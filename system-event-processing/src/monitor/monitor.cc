@@ -57,7 +57,14 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond,
   boost::uuids::uuid uuid = boost::uuids::random_generator()();
   machineUuidStr_ = boost::lexical_cast<std::string>(uuid);
   monitoringRate_ = rateInSecond;
-  gethostname(this->machineName_, sizeof(this->machineName_));
+  //  get IP address of current machine
+  char buf[128];
+  gethostname(buf, sizeof(buf));
+  struct hostent *hostAddr;
+  struct in_addr addr;
+  hostAddr = gethostbyname(buf);
+  memcpy(&addr.s_addr, hostAddr->h_addr, sizeof(addr.s_addr));
+  strcpy(this->machineName_, inet_ntoa(addr));
   commandServicePort_ = commandServicePort;
   collectorCommandPort_ = collectorCommandPort;
 
@@ -261,7 +268,7 @@ void Monitor::_RegisterToCollectors()
 
   boost::property_tree::ptree commandJson;
   commandJson.put<string>("commandType", "registration");
-  commandJson.put<string>("monitorIP", machineName_);
+  commandJson.put<string>("machineName", machineName_);
   stringstream ss;
   write_json(ss, commandJson);
   string strJson = ss.str();
@@ -275,7 +282,6 @@ void Monitor::_RegisterToCollectors()
   std::map<std::string, bool>::iterator collectorStatusItr = collectorStatus.begin();
   for(; collectorStatusItr != collectorStatus.end(); ++collectorStatusItr)
   {
-
     int connectionSocketFd = socket(AF_INET, SOCK_STREAM, 0);
     if(connectionSocketFd < 0)
     {

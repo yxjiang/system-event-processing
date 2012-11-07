@@ -11,6 +11,8 @@ namespace event
 {
 using namespace std;
 
+std::vector<MonitorProfile*> Collector::monitorProfile_;
+pthread_rwlock_t Collector::monitorProfileRwLock_;
 pthread_attr_t Collector::threadAttr_;
 pthread_t Collector::commandServicePid_;
 int Collector::commandServicePort_ = 32100;
@@ -44,6 +46,7 @@ Collector::Collector(vector<string> vecPeerCollectorIPs, int communicationPort,
     exit(1);
   }
 
+  pthread_rwlock_init(&monitorProfileRwLock_, NULL);
   pthread_rwlock_init(&registeredQueryProfileRwlock_, NULL);
 
 }
@@ -136,7 +139,29 @@ void *Collector::_CommandServiceWorker(void *arg)
     pthread_exit(NULL);
     return NULL;
   }
-  fprintf(stdout, "[%s] Receive %s.\n", GetCurrentTime().c_str(), contentBuffer);
+
+  stringstream ss;
+  ss << contentBuffer;
+  boost::property_tree::ptree commandTree;
+  read_json(ss, commandTree);
+  const char *commandType = commandTree.get<string>("commandType").c_str();
+
+
+  //  registration command
+  if(0 == strcmp(commandType, "registration"))
+  {
+    const char *machineName = commandTree.get<string>("machineName").c_str();
+    MonitorProfile *newMonitorProfile = new MonitorProfile;
+    newMonitorProfile->machineName = machineName;
+    time_t curTime;
+    time(&curTime);
+    newMonitorProfile->lastCommunicationTime = curTime;
+    pthread_rwlock_wrlock(&monitorProfileRwLock_);
+    monitorProfile_.push_back(newMonitorProfile);
+    pthread_rwlock_unlock(&monitorProfileRwLock_);
+    fprintf(stdout, "[%s] Register new monitor with name [%s].\n", GetCurrentTime().c_str(), newMonitorProfile->machineName);
+  }
+
   pthread_exit(NULL);
   return NULL;
 }
@@ -319,8 +344,8 @@ int main(int argc, char *argv[])
       "{'query_uuid': 'uuuu-uuuu', 'query-content': 'select all from all'}";
   string testQuery2 =
       "{'query_uuid': 'aaaa-aaaa', 'query-content': '\"Hello World!\"'}";
-  collector.RegisterQuery(testQuery1, 1);
-  collector.RegisterQuery(testQuery2, 5);
+//  collector.RegisterQuery(testQuery1, 1);
+//  collector.RegisterQuery(testQuery2, 5);
   collector.Run();
 
   return 0;
