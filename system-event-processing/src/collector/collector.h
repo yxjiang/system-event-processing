@@ -32,7 +32,7 @@ namespace event
 typedef struct
 {
   boost::uuids::uuid uuid;
-  char *queryContent;
+  const char *queryContent;
   long lastCalled;
   int queryInterval;
 } QueryProfile;
@@ -44,25 +44,36 @@ public:
   ~Collector();
 
   void Run();
-  void RegisterQuery(std::string &queryContent, int queryInterval);
+  void RegisterQuery(const std::string &queryContent, int queryInterval);
 
 protected:
   /*!
+   * Receive the commands.
+   */
+  static void *_CommandService(void *arg);\
+  /*!
+   * The worker thread to process commands.
+   */
+  static void *_CommandServiceWorker(void *arg);
+  /*!
    * Scan the registered query every second, and execute query if necessary
    */
-  static void *_SubscribeExecutor(void *arg);
+//  static void *_SubscribeExecutor(void *arg);
   /*!
    * Send the query to all monitors via multicast.
    */
-  static void *_SubscribeExecutorWorker(void *arg);
+//  static void *_SubscribeExecutorWorker(void *arg);
 //  static void *_DataReceiveService(void *arg);
 //  static void *_DataReceiveWorker(void *arg);
 
 private:
-  static pthread_attr_t threadAttr;
-  static int monitorCommunicationServicePort_;
+  static pthread_attr_t threadAttr_;
+  static pthread_t commandServicePid_;
+  static int commandServicePort_;
+
+  static int monitorCommandServicePort_;
   static pthread_t subscribeExecutorPid_; //  the thread that in charge of sending query to monitors
-  static std::map<boost::uuids::uuid, QueryProfile> registeredQueryProfiles_;
+  static std::map<boost::uuids::uuid, QueryProfile*> registeredQueryProfiles_;
   static pthread_rwlock_t registeredQueryProfileRwlock_;
   //  static int dataServicePort_;
   //  static bool dataServiceStop_;
