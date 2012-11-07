@@ -16,40 +16,50 @@ string Monitor::machineUuidStr_;
 char Monitor::machineName_[256];
 map<string, CrawlerStatus> Monitor::crawlers_;
 EventStream Monitor::stream_;
+pthread_attr_t Monitor::threadAttr_;    //  thread attribute
 
 int Monitor::monitoringRate_ = 1;
-bool Monitor::fetchDataServiceStop_ = false; //  push data service is running by default
 pthread_mutex_t Monitor::dataFetchedMutex_ = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t Monitor::dataFetchedCond_ = PTHREAD_COND_INITIALIZER;
 bool Monitor::firstDataFetched_ = false; //  push data would not start until first batch of data is running
 
-int Monitor::communicationServicePort_ = 32100; //  default port number of communication service
-int Monitor::commandServiceSocketFd = -1;
-bool Monitor::commandServiceStop_ = false;
-
-int Monitor::collectorDataPort_ = 32168;//  default data port for collector
-std::map<std::string, bool > Monitor ::collectorStatus_;    //  record status of all collectors
-pthread_attr_t Monitor::threadAttr_;    //  thread attribute
-
-//bool Monitor::pushDataServiceStop_ = false;//  push data is running by default
-
-
 pthread_rwlock_t Monitor::collectorStatusrwlock_;
-int Monitor::collectorRegistrationPort_ = 32167; //  default registration port for collector
+std::map<std::string, bool > Monitor ::collectorStatus_;    //  record status of all collectors
+int Monitor::commandServicePort_ = 32100; //  default port number of communication service
+int Monitor::commandServiceSocketFd_ = -1;
+int Monitor::collectorCommandPort_ = 32100;    //  default collector command port
+
+
+
+
+
+
+
+
+
+
+
+int Monitor::queryServicePort_ = 32100;
+int Monitor::queryServiceSocketFd_;
+
+
+
+
+
 
 
 
 Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond,
-    int streamSize, int communicationServicePort, int collectorRegistrationPort,
-    int collectorDataPort)
+    int streamSize, int commandServicePort, int collectorCommandPort)
 {
+
+  //  initialize fetch data service
   boost::uuids::uuid uuid = boost::uuids::random_generator()();
   machineUuidStr_ = boost::lexical_cast<std::string>(uuid);
   monitoringRate_ = rateInSecond;
   gethostname(this->machineName_, sizeof(this->machineName_));
-  communicationServicePort_ = communicationServicePort;
-  collectorRegistrationPort_ = collectorRegistrationPort;
-  collectorDataPort_ = collectorDataPort;
+  commandServicePort_ = commandServicePort;
+  collectorCommandPort_ = collectorCommandPort;
 
   stream_.SetStreamBufferSize(streamSize);
 
@@ -71,6 +81,9 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond,
     exit(1);
   }
 
+  //  register to collectors
+  _RegisterToCollectors();
+
   //  initialize locks
   pthread_rwlock_init(&collectorStatusrwlock_, NULL);
 
@@ -78,19 +91,10 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond,
 
 Monitor::~Monitor()
 {
-//  pthread_rwlock_wrlock(&stopSymbolrwlock_);
-  this->fetchDataServiceStop_ = true;
-  this->commandServiceStop_ = true;
-//  this->pushDataServiceStop_ = true;
-//  pthread_rwlock_unlock(&stopSymbolrwlock_);
-
   //  release crawlers
   map<string, CrawlerStatus>::iterator itr = crawlers_.begin();
   for (; itr != crawlers_.end(); ++itr)
     delete itr->second.crawler;
-
-  //  close socket
-  close(this->commandServiceSocketFd);
 
   //  release resource
   pthread_attr_destroy(&threadAttr_);
@@ -106,11 +110,12 @@ void Monitor::Run()
         (void*) (itr->second.crawler));
 
   //  start to collect meta-data from crawlers and put into stream
-  pthread_create(&(this->collectThreadPid_), NULL, _CollectDataFromCrawlers,
-      NULL);
+  pthread_create(&(this->collectThreadPid_), NULL, _CollectDataFromCrawlers, NULL);
 
-  //  initialize communication service
-  pthread_create(&(this->communicationServicePid_), NULL, _CommandService, NULL);
+  //  initialize query service
+//  pthread_create(&(this->queryServicePid_), NULL, _QueryService, NULL);
+  //  initialize command service
+//  pthread_create(&(this->commandServicePid_), NULL, _CommandService, NULL);
 
 //
 //  //  register to collectors
@@ -127,8 +132,8 @@ void Monitor::Run()
       pthread_join(itr->second.pid, NULL);
 
   pthread_join(this->collectThreadPid_, NULL);
-
-  pthread_join(this->communicationServicePid_, NULL);
+  pthread_join(this->queryServicePid_, NULL);
+//  pthread_join(this->communicationServicePid_, NULL);
 //  pthread_join(this->pushDataServicePid_, NULL);
 }
 
@@ -175,7 +180,6 @@ void *Monitor::_CrawlerService(void *arg)
   Crawler *crawler = (Crawler *) arg;
   while (true)
   {
-    stopService = fetchDataServiceStop_;
     if (true == stopService)
       break;
 
@@ -192,103 +196,222 @@ void *Monitor::_CrawlerService(void *arg)
 }
 
 /*!
- * Thread entry function for communication service.
+ * Collect the data from crawlers periodically.
  */
-void *Monitor::_CommandService(void *arg)
+void *Monitor::_CollectDataFromCrawlers(void *arg)
 {
-  struct sockaddr_in serverAddr; // Server Internet address
-  //  initialize server address
-  bzero(&serverAddr, sizeof(serverAddr));
-  serverAddr.sin_family = AF_INET;
-  serverAddr.sin_addr.s_addr = htons(INADDR_ANY);
-  serverAddr.sin_port = htons(MULTICAST_PORT);
-  struct ip_mreq multicastRequest;  //  multicast request
-  u_int yes = 1;
-
-  commandServiceSocketFd = socket(AF_INET, SOCK_DGRAM, 0);
-  if (commandServiceSocketFd < 0)
+  while (true)
   {
-    fprintf(stderr, "[%s] Monitor communication service creates socket failed.\n", GetCurrentTime().c_str());
-    exit(1);
-  }
-  else
-    printf("[%s] Monitor communication service socket created...\n", GetCurrentTime().c_str());
+    ptree root;
+    map<string, CrawlerStatus>::iterator crawlerItr = crawlers_.begin();
+    //  put timestamp of the first crawler
+    ObserveData curData = crawlerItr->second.crawler->GetData();
+    root.put<string>("machineName", machineName_); // set sender
+    root.put<long int>("timestamp", curData.timestamp); //  set timestamp
+    //  iterates all the crawlers to assemble the monitoring meta-data
+    for (; crawlerItr != crawlers_.end(); ++crawlerItr)
+    {
+      string streamType = crawlerItr->second.crawler->GetStreamType();
+      ObserveData stableMetaData = crawlerItr->second.crawler->GetData();
+      ptree subNode;
+      map<string, string> properties = *stableMetaData.properties_.get();
+      map<string, string>::iterator propertyItr = properties.begin(); //  crawler may replace the map at the same time
+      for (; propertyItr != properties.end(); ++propertyItr)
+        subNode.put<string>(propertyItr->first, propertyItr->second);
+      root.add_child(streamType, subNode);
+    }
 
-  //  allow multiple sockets to use the same PORT number
-//  if(setsockopt(commandServiceSocketFd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
+    stream_.AddData(root);
+//    fprintf(stdout, "%s\n", _AssembleDynamicMetaData());
+    ThreadSleep(monitoringRate_, 0);
+  }
+  pthread_exit(NULL);
+  return NULL;
+}
+
+/*!
+ * Assemble the dynamic meta-data grabbed by crawlers into JSON format.
+ */
+const char *Monitor::_AssembleDynamicMetaData()
+{
+  boost::property_tree::ptree tree = stream_.GetLatest();
+
+  stringstream ss;
+  write_json(ss, tree);
+  string strJson = ss.str();
+
+  if (strJson.size() == 0)
+  {
+    fprintf(stderr, "size = 0\n");
+  }
+
+  utility::MetaData metaData;
+  metaData.set_monitoruuid(machineUuidStr_);
+  metaData.set_jsonstring(strJson);
+
+//  return strJson.c_str();
+  return metaData.SerializeAsString().c_str();
+}
+
+void Monitor::_RegisterToCollectors()
+{
+  pthread_rwlock_rdlock(&collectorStatusrwlock_);
+  std::map<std::string, bool> collectorStatus = collectorStatus_;
+  pthread_rwlock_unlock(&collectorStatusrwlock_);
+
+  boost::property_tree::ptree commandJson;
+  commandJson.put<string>("commandType", "registration");
+  commandJson.put<string>("monitorIP", machineName_);
+  stringstream ss;
+  write_json(ss, commandJson);
+  string strJson = ss.str();
+
+  struct hostent *serverHostent;
+  struct sockaddr_in serverAddr;
+  bzero(&serverAddr, sizeof(serverAddr));
+  serverAddr.sin_port = htons(collectorCommandPort_);
+  serverAddr.sin_family = AF_INET;
+
+  std::map<std::string, bool>::iterator collectorStatusItr = collectorStatus.begin();
+  for(; collectorStatusItr != collectorStatus.end(); ++collectorStatusItr)
+  {
+
+    int connectionSocketFd = socket(AF_INET, SOCK_STREAM, 0);
+    if(connectionSocketFd < 0)
+    {
+      fprintf(stderr, "[%s] Failed to create socket for monitor registration. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      continue;
+    }
+    serverHostent = gethostbyname(collectorStatusItr->first.c_str());
+    bcopy(serverHostent->h_addr, &serverAddr.sin_addr.s_addr, serverHostent->h_length);
+
+    if(connect(connectionSocketFd, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
+    {
+      fprintf(stderr, "[%s] Failed to connect to collector for registration. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      close(connectionSocketFd);
+      continue;
+    }
+
+    if(send(connectionSocketFd, strJson.c_str(), strJson.size(), 0) < 0)
+    {
+      fprintf(stderr, "[%s] Failed to send registration data to collector. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      close(connectionSocketFd);
+      continue;
+    }
+  }
+
+}
+
+///*!
+// * Thread entry function for communication service.
+// */
+//void *Monitor::_QueryService(void *arg)
+//{
+//  struct sockaddr_in serverAddr; // Server Internet address
+//  //  initialize server address
+//  bzero(&serverAddr, sizeof(serverAddr));
+//  serverAddr.sin_family = AF_INET;
+//  serverAddr.sin_addr.s_addr = htons(INADDR_ANY);
+//  serverAddr.sin_port = htons(MULTICAST_PORT);
+//  struct ip_mreq multicastRequest;  //  multicast request
+//  int addrLen;
+////  u_int yes = 1;
+//
+//  queryServiceSocketFd_ = socket(AF_INET, SOCK_DGRAM, 0);
+//  if (queryServiceSocketFd_ < 0)
+//  {
+//    fprintf(stderr, "[%s] Monitor communication service creates socket failed.\n", GetCurrentTime().c_str());
+//    exit(1);
+//  }
+//  else
+//    printf("[%s] Monitor communication service socket created...\n", GetCurrentTime().c_str());
+//
+//  //  allow multiple sockets to use the same PORT number
+////  if(setsockopt(commandServiceSocketFd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
+////  {
+////    fprintf(stderr, "[%s] Monitor communication service set multicast failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+////    exit(1);
+////  }
+//
+//  //  bind socket and address
+//  if (bind(queryServiceSocketFd_, (struct sockaddr*) &serverAddr, sizeof(serverAddr)))
+//  {
+//    fprintf(stderr, "[%s] Monitor communication service bind port: %d failed.\n", GetCurrentTime().c_str(), communicationServicePort_);
+//    exit(1);
+//  }
+//  else
+//    printf("[%s] Monitor communication service port binded to port %d...\n", GetCurrentTime().c_str(), communicationServicePort_);
+//
+//  multicastRequest.imr_multiaddr.s_addr = inet_addr(MULTICAST_GROUP);
+//  multicastRequest.imr_interface.s_addr = htons(INADDR_ANY);
+//  if(setsockopt(queryServiceSocketFd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &multicastRequest, sizeof(multicastRequest)) < 0)
 //  {
 //    fprintf(stderr, "[%s] Monitor communication service set multicast failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
 //    exit(1);
 //  }
+//
+//  //  continuously receive data
+//  char dataBuffer[UDP_DATA_BUFFER];
+//  while(true)
+//  {
+//    int nbytes;
+//    if((nbytes = recvfrom(queryServiceSocketFd_, dataBuffer, UDP_DATA_BUFFER, 0, (struct sockaddr *) &serverAddr, (socklen_t *)&addrLen)) < 0)
+//    {
+//      fprintf(stderr, "[%s] Monitor recive query data failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+//    }
+//    else
+//    {
+//      fprintf(stdout, "[%s] Recived: %s.\n", GetCurrentTime().c_str(), dataBuffer);
+//    }
+//  }
+//
+//
+////  //  listen on port
+////  if (listen(commandServiceSocketFd, 5))
+////  {
+////    fprintf(stderr, "[%s] Monitor communication service listen failed.\n", GetCurrentTime().c_str());
+////    exit(1);
+////  }
+////  else
+////    printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime().c_str(), communicationServicePort_);
+////
+////  while (true)
+////  {
+////    if (true == commandServiceStop_)
+////      break;
+////
+////    int connectionSocket = accept(commandServiceSocketFd, NULL, 0);
+////    stringstream recvContent;
+////    int recvBytes;
+////    char buffer[1024];
+////    while ((recvBytes = recv(connectionSocket, buffer, 1024, 0)) > 0)
+////    {
+////      if (recvBytes < 0)
+////        fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
+////      recvContent << buffer;
+////    }
+////
+////    string contentString = recvContent.str();
+////    CommandPackage *package = new CommandPackage;
+////    package->content = contentString;
+////    pthread_t workerPid;
+////    pthread_create(&workerPid, &threadAttr_, _CommandServiceWorker, (void *)package);
+////
+////    close(connectionSocket);
+////  }
+//
+//  return NULL;
+//}
 
-  //  bind socket and address
-  if (bind(commandServiceSocketFd, (struct sockaddr*) &serverAddr, sizeof(serverAddr)))
-  {
-    fprintf(stderr, "[%s] Monitor communication service bind port: %d failed.\n", GetCurrentTime().c_str(), communicationServicePort_);
-    exit(1);
-  }
-  else
-    printf("[%s] Monitor communication service port binded to port %d...\n", GetCurrentTime().c_str(), communicationServicePort_);
-
-  multicastRequest.imr_multiaddr.s_addr = inet_addr(MULTICAST_GROUP);
-  multicastRequest.imr_interface.s_addr = htons(INADDR_ANY);
-  if(setsockopt(commandServiceSocketFd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &multicastRequest, sizeof(multicastRequest)) < 0)
-  {
-    fprintf(stderr, "[%s] Monitor communication service set multicast failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-    exit(1);
-  }
-
-  int nbytes
-  if(())
-
-
-
-  //  listen on port
-  if (listen(commandServiceSocketFd, 5))
-  {
-    fprintf(stderr, "[%s] Monitor communication service listen failed.\n", GetCurrentTime().c_str());
-    exit(1);
-  }
-  else
-    printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime().c_str(), communicationServicePort_);
-
-  while (true)
-  {
-    if (true == commandServiceStop_)
-      break;
-
-    int connectionSocket = accept(commandServiceSocketFd, NULL, 0);
-    stringstream recvContent;
-    int recvBytes;
-    char buffer[1024];
-    while ((recvBytes = recv(connectionSocket, buffer, 1024, 0)) > 0)
-    {
-      if (recvBytes < 0)
-        fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
-      recvContent << buffer;
-    }
-
-    string contentString = recvContent.str();
-    CommandPackage *package = new CommandPackage;
-    package->content = contentString;
-    pthread_t workerPid;
-    pthread_create(&workerPid, &threadAttr_, _CommandServiceWorker, (void *)package);
-
-    close(connectionSocket);
-  }
-
-  return NULL;
-}
-
-void *Monitor::_CommandServiceWorker(void *arg)
-{
-  CommandPackage *package = (CommandPackage *)arg;
-  fprintf(stdout, "[%s] Receive command %s.\n", GetCurrentTime().c_str(), package->content.c_str());
-
-  delete package;
-  pthread_exit(NULL);
-  return NULL;
-}
+//void *Monitor::_CommandServiceWorker(void *arg)
+//{
+//  CommandPackage *package = (CommandPackage *)arg;
+//  fprintf(stdout, "[%s] Receive command %s.\n", GetCurrentTime().c_str(), package->content.c_str());
+//
+//  delete package;
+//  pthread_exit(NULL);
+//  return NULL;
+//}
 //
 ///*!
 // * Send profile data to collectors.
@@ -533,62 +656,7 @@ void *Monitor::_CommandServiceWorker(void *arg)
 //  return strJson;
 //}
 //
-/*!
- * Collect the data from crawlers periodically.
- */
-void *Monitor::_CollectDataFromCrawlers(void *arg)
-{
-  while (true)
-  {
-    ptree root;
-    map<string, CrawlerStatus>::iterator crawlerItr = crawlers_.begin();
-    //  put timestamp of the first crawler
-    ObserveData curData = crawlerItr->second.crawler->GetData();
-    root.put<string>("machineName", machineName_); // set sender
-    root.put<long int>("timestamp", curData.timestamp); //  set timestamp
-    //  iterates all the crawlers to assemble the monitoring meta-data
-    for (; crawlerItr != crawlers_.end(); ++crawlerItr)
-    {
-      string streamType = crawlerItr->second.crawler->GetStreamType();
-      ObserveData stableMetaData = crawlerItr->second.crawler->GetData();
-      ptree subNode;
-      map<string, string> properties = *stableMetaData.properties_.get();
-      map<string, string>::iterator propertyItr = properties.begin(); //  crawler may replace the map at the same time
-      for (; propertyItr != properties.end(); ++propertyItr)
-        subNode.put<string>(propertyItr->first, propertyItr->second);
-      root.add_child(streamType, subNode);
-    }
 
-    stream_.AddData(root);
-//    fprintf(stdout, "%s\n", _AssembleDynamicMetaData());
-    ThreadSleep(monitoringRate_, 0);
-  }
-  pthread_exit(NULL);
-  return NULL;
-}
-/*!
- * Assemble the dynamic meta-data grabbed by crawlers into JSON format.
- */
-const char *Monitor::_AssembleDynamicMetaData()
-{
-  boost::property_tree::ptree tree = stream_.GetLatest();
-
-  stringstream ss;
-  write_json(ss, tree);
-  string strJson = ss.str();
-
-  if (strJson.size() == 0)
-  {
-    fprintf(stderr, "size = 0\n");
-  }
-
-  utility::MetaData metaData;
-  metaData.set_monitoruuid(machineUuidStr_);
-  metaData.set_jsonstring(strJson);
-
-//  return strJson.c_str();
-  return metaData.SerializeAsString().c_str();
-}
 
 } //  end of namespace event
 
@@ -598,24 +666,24 @@ int main(int argc, char *argv[])
   using namespace event;
 
   int monitorRate = 1;
+  int streamSize = 60;
   int commandPort = 32100;
-  int collectorRegistrationPort = 32167;
-  int collectorDataPort = 32168;
+  int collectorCommandPort = 32100;
 
   if (argc == 1 || argc < 2 || argc > 6)
   {
     printf(
-        "\nusage: monitor ips [monitor-rate] [command-port] [collector-reg-port] [collector-data-port]\n");
+        "\nusage: monitor ips [monitor-rate] [stream-size] [command-port] [collector-cmd-port]\n");
     printf("Options:\n");
     printf("\tips\t\t\t\tList of IPs of collectors, separated by ','.\n");
     printf(
         "\tmonitor-rate\t\t\tRate of monitoring in second, e.g. 3 indicates monitor the system every 3 seconds.\n");
     printf(
+        "\tstream-size\t\t\tSize of stream, e.g. 60 indicates store the latest 60 records.\n");
+    printf(
         "\tcommand-port\t\t\tPort number of command service. Default is 32100.\n");
     printf(
-        "\tcollector-reg-port\t\tRegistration port of remote collectors. Default is 32167.\n");
-    printf(
-        "\tcollector-data-port\t\tData port of remote collectors. Default is 32168.\n");
+        "\tcollector-cmd-port\t\tCommand port of remote collectors. Default is 32100.\n");
     exit(1);
   }
   vector<string> vecIPs;
@@ -626,23 +694,30 @@ int main(int argc, char *argv[])
   }
 
   if (argc >= 3)
+  {
     monitorRate = atoi(argv[2]);
+    if(monitorRate <= 0)
+      monitorRate = 1;
+  }
 
-  if (argc >= 4)
-    commandPort = atoi(argv[3]);
+  if(argc >= 4)
+  {
+    streamSize = atoi(argv[3]);
+    if(streamSize < 10)
+      streamSize = 10;
+  }
 
   if (argc >= 5)
-    collectorRegistrationPort = atoi(argv[4]);
+    commandPort = atoi(argv[3]);
 
-  if (argc == 6)
-    collectorDataPort = atoi(argv[5]);
+  if (argc >= 6)
+    collectorCommandPort = atoi(argv[4]);
 
   CPUCrawler *cpuCrawler = new CPUCrawler;
   cpuCrawler->Init();
   DummyCrawler *dummyCrawler = new DummyCrawler;
   dummyCrawler->Init();
-  Monitor monitor(vecIPs, monitorRate, commandPort, collectorRegistrationPort,
-      collectorDataPort);
+  Monitor monitor(vecIPs, monitorRate, streamSize, commandPort, collectorCommandPort);
 //  monitor.Attach(dummyCrawler);
   monitor.Attach(cpuCrawler);
   monitor.Run();

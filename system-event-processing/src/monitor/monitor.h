@@ -71,13 +71,15 @@ public:
    * 1. Wait on commandPort for remote command.
    * 2. Start all crawlers.
    * 3. Register to collectors.
-   * \param     commandPort     The port number for monitor to communicate with collectors.
-   * \param     vecCollectorIps The list of IPs for all the collectors.
-   * \param     rateInSecond    The monitoring rate, default is 1 second.
-   * \param     streamSize      The maximal size of the stream.
+   * \param     commandPort             The port number for monitor to communicate with collectors.
+   * \param     vecCollectorIps         The list of IPs for all the collectors.
+   * \param     rateInSecond            The monitoring rate, default is 1 second.
+   * \param     streamSize              The maximal size of the stream.
+   * \param     commandPort             The port number for command service.
+   * \param     collectorCommandPort    The command port number for remote collectors.
    */
-  Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond = 1, int streamSize = 60,
-      int commandPort = 32100, int collectorRegistrationPort = 32167, int collectorDataPort = 32168);
+  Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond, int streamSize,
+      int commandPort, int collectorCommandPort);
 
   /*!
    * Deinitialize the monitor.
@@ -115,6 +117,25 @@ private:
    * The thread function entry for fetching data.
    */
   static void *_CrawlerService(void *arg);
+  /*!
+   * Collect data from crawlers and put into stream.
+   */
+  static void *_CollectDataFromCrawlers(void *arg);
+  /*!
+   * Generate the json and return it as text.
+   */
+  static const char *_AssembleDynamicMetaData();
+  /*!
+   * Register to the collectors by sending the profiles of the monitor.
+   * Also, the stable meta-data grabbed by crawlers are running running  also sent.
+   */
+  static void _RegisterToCollectors();
+
+
+
+
+
+
 //  /*!
 //   * Thread entry function.
 //   * Push the meta-data to collectors periodically.
@@ -125,21 +146,17 @@ private:
 //   * The worker thread to push data to specified collector
 //   */
 //  static void *_PushDataWorkerThread(void *arg);
-
+  static void *_QueryService(void *arg);
   /*!
    * The thread entry function for command service task.
    */
-  static void *_CommandService(void *arg);
+//  static void *_CommandService(void *arg);
   /*!
    * Worker to handle command.
    */
-  static void *_CommandServiceWorker(void *arg);
+//  static void *_CommandServiceWorker(void *arg);
 //
-//  /*!
-//   * Register to the collectors by sending the profiles of the monitor.
-//   * Also, the stable meta-data grabbed by crawlers are running running  also sent.
-//   */
-//  static void _RegisterToCollectors();
+
 //
 //  /*!
 //   * Handle the collector renew event.
@@ -156,14 +173,7 @@ private:
 //   */
 //  static const std::string _AssembleStatbleMetaDataJson();
 //
-  /*!
-   * Collect data from crawlers and put into stream.
-   */
-  static void *_CollectDataFromCrawlers(void *arg);
-  /*!
-   * Generate the json and return it as text.
-   */
-  static const char *_AssembleDynamicMetaData();
+
 
 
 
@@ -174,36 +184,34 @@ private:
   static std::map<std::string, CrawlerStatus> crawlers_;
   static EventStream stream_;
   pthread_t collectThreadPid_;
+  static pthread_attr_t threadAttr_;
 
   /*    fetch data task related     */
   static int monitoringRate_;
-  static bool fetchDataServiceStop_;
   static pthread_mutex_t dataFetchedMutex_;
   static pthread_cond_t dataFetchedCond_;
   static bool firstDataFetched_;
 
-  /*    communication related  */
-  static int communicationServicePort_;
-  static int commandServiceSocketFd;        //  file descriptor for command socket
-  static bool commandServiceStop_;          //  indicating whether command service is stopped
-  pthread_t communicationServicePid_;
-
-
-  /*    push data related task  */
-//  pthread_t pushDataServicePid_;
-//  static bool pushDataServiceStop_;
-  static int collectorDataPort_;
-  static std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
-  static pthread_attr_t threadAttr_;
-
-
-
-
-
+  /*    command service related */
   static pthread_rwlock_t collectorStatusrwlock_;
+  static std::map<std::string, bool> collectorStatus_; //  each entry indicates whether the collector works properly or crash
+  static int commandServiceSocketFd_;        //  file descriptor for command socket
+  static int commandServicePort_;
+  static int collectorCommandPort_;
+  pthread_t commandServicePid_;
 
-  static int collectorRegistrationPort_;
 
+
+
+
+
+
+
+
+  /*    query service related   */
+  static int queryServicePort_;
+  static int queryServiceSocketFd_;
+  pthread_t queryServicePid_;
 };
 
 

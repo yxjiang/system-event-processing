@@ -19,15 +19,16 @@
 
 namespace event
 {
-
+///*  Maximum buffer size for UDP packet  */
+//const static unsigned int UDP_DATA_BUFFER = 1464;
 /*  sleep interval, 50 millisecond  */
-const unsigned long int CRAWLER_SLEEP_TIME_NANOSEC = 50000000;
+const static unsigned long int CRAWLER_SLEEP_TIME_NANOSEC = 50000000;
 
 /*  sample interval, 50 millisecond */
-const unsigned long int CRAWLER_SAMPLE_TIME_NANOSEC = 50000000;
+const static unsigned long int CRAWLER_SAMPLE_TIME_NANOSEC = 50000000;
 
-const char *MULTICAST_GROUP = "225.0.0.66";
-const int MULTICAST_PORT = "32100";
+//const static char *MULTICAST_GROUP = "225.0.0.66";
+//const static int MULTICAST_PORT = 32100;
 
 /*!
  * Convert time_t data structure into string.
