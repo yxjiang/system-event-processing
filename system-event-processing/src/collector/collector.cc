@@ -17,7 +17,7 @@ pthread_attr_t Collector::threadAttr_;
 pthread_t Collector::commandServicePid_;
 int Collector::commandServicePort_ = 32100;
 
-int Collector::monitorCommandServicePort_ = 32100; //  default port for monitor to receive commands
+int Collector::monitorCommandServicePort_ = 32101; //  default port for monitor to receive commands
 pthread_t Collector::subscribeExecutorPid_;
 map<boost::uuids::uuid, QueryProfile*> Collector::registeredQueryProfiles_;
 pthread_rwlock_t Collector::registeredQueryProfileRwlock_;
@@ -63,11 +63,11 @@ void Collector::Run()
 //  pthread_t dataServicePid;
 //  pthread_create(&dataServicePid, &threadAttr, _DataReceiveService, NULL);
 
-//  pthread_create(&subscribeExecutorPid_, NULL, _SubscribeExecutor, NULL);
+  pthread_create(&subscribeExecutorPid_, NULL, _SubscribeExecutor, NULL);
 
 //  pthread_join(dataServicePid, NULL);
   pthread_join(commandServicePid_, NULL);
-//  pthread_join(subscribeExecutorPid_, NULL);
+  pthread_join(subscribeExecutorPid_, NULL);
 }
 
 void *Collector::_CommandService(void *arg)
@@ -76,7 +76,7 @@ void *Collector::_CommandService(void *arg)
   bzero(&commandServiceAddr, sizeof(sockaddr_in));
   commandServiceAddr.sin_family = AF_INET;
   commandServiceAddr.sin_port = htons(commandServicePort_);
-  commandServiceAddr.sin_addr.s_addr = htons(INADDR_ANY);
+  commandServiceAddr.sin_addr.s_addr = INADDR_ANY;
 
   int commandServerSocketFd = socket(AF_INET, SOCK_STREAM, 0);
   if (commandServerSocketFd < 0)
@@ -152,14 +152,15 @@ void *Collector::_CommandServiceWorker(void *arg)
   {
     const char *machineName = commandTree.get<string>("machineName").c_str();
     MonitorProfile *newMonitorProfile = new MonitorProfile;
-    newMonitorProfile->machineName = machineName;
+    newMonitorProfile->machineIP = machineName;
     time_t curTime;
     time(&curTime);
     newMonitorProfile->lastCommunicationTime = curTime;
     pthread_rwlock_wrlock(&monitorProfileRwLock_);
     monitorProfile_.push_back(newMonitorProfile);
     pthread_rwlock_unlock(&monitorProfileRwLock_);
-    fprintf(stdout, "[%s] Register new monitor with name [%s].\n", GetCurrentTime().c_str(), newMonitorProfile->machineName);
+    fprintf(stdout, "[%s] Register new monitor with name [%s], now size is %lu.\n",
+        GetCurrentTime().c_str(), newMonitorProfile->machineIP, monitorProfile_.size());
   }
 
   pthread_exit(NULL);
@@ -183,35 +184,81 @@ void Collector::RegisterQuery(const string &queryContent, int queryInterval)
       profile->queryContent);
 }
 
-//void *Collector::_SubscribeExecutor(void *arg)
-//{
-//  while (true)
-//  {
-//    time_t curTime;
-//    time(&curTime);
-//
-//    map<boost::uuids::uuid, QueryProfile*>::iterator profileItr =
-//        registeredQueryProfiles_.begin();
-//    for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
-//    {
-//      QueryProfile *profile = profileItr->second;
-//      if (profile->lastCalled == -1
-//          || (curTime - profile->lastCalled == profile->queryInterval)) //  time is up
-//      {
-//        pthread_rwlock_wrlock(&registeredQueryProfileRwlock_);
-//        profile->lastCalled = curTime;
-//        pthread_rwlock_unlock(&registeredQueryProfileRwlock_);
-//        pthread_t workerPid;
-//        pthread_create(&workerPid, &threadAttr_, _SubscribeExecutorWorker,
-//            (void *) profile->queryContent);
-//      }
-//    }
-//    ThreadSleep(1, 0);
-//  }
-//
-//  pthread_exit(NULL);
-//  return NULL;
-//}
+void *Collector::_SubscribeExecutor(void *arg)
+{
+  while (true)
+  {
+    time_t curTime;
+    time(&curTime);
+
+    map<boost::uuids::uuid, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
+    stringstream queryStream;
+    for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
+    {
+      QueryProfile *profile = profileItr->second;
+//      fprintf(stdout, "[%s] lastCalled: %ld, curTime: %ld, cur - last: %ld.\n", GetCurrentTime().c_str(), profile->lastCalled, curTime, curTime - profile->lastCalled);
+      if (profile->lastCalled == -1 || (curTime - profile->lastCalled == profile->queryInterval)) //  time is up
+      {
+        pthread_rwlock_wrlock(&registeredQueryProfileRwlock_);
+        profile->lastCalled = curTime;
+        queryStream << "\n-----\n" << profile->queryContent;    //  pack the queries together
+        pthread_rwlock_unlock(&registeredQueryProfileRwlock_);
+      }
+    }
+    const char *queryStr = queryStream.str().c_str();
+
+    pthread_t workerPid;
+    pthread_create(&workerPid, &threadAttr_, _SubscribeExecutorWorker, (void *) queryStr);
+    ThreadSleep(1, 0);
+  }
+
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void *Collector::_SubscribeExecutorWorker(void *arg)
+{
+  const char *queryStream = (const char *)arg;
+  struct sockaddr_in monitorAddr;
+  bzero(&monitorAddr, sizeof(monitorAddr));
+  monitorAddr.sin_family = AF_INET;
+  monitorAddr.sin_port = htons(monitorCommandServicePort_);
+
+  std::vector<MonitorProfile*>::iterator monitorItr = monitorProfile_.begin();
+  for(; monitorItr != monitorProfile_.end(); ++monitorItr)
+  {
+    MonitorProfile *monitorProfile = *monitorItr;
+    struct hostent *hostent;
+    hostent = gethostbyname(monitorProfile->machineIP);
+    bcopy(hostent->h_addr, &monitorAddr.sin_addr.s_addr, hostent->h_length);
+
+    int monitorSocketFd = socket(AF_INET, SOCK_STREAM, 0);
+    if(monitorSocketFd < 0)
+    {
+      fprintf(stderr, "[%s] Create socket for sending query failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      continue;
+    }
+    if(connect(monitorSocketFd, (struct sockaddr *)&monitorAddr, sizeof(monitorAddr)) < 0)
+    {
+      fprintf(stderr, "[%s] Connect to remote monitor failed when sending query. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      close(monitorSocketFd);
+      continue;
+    }
+
+    size_t nBytesSent = send(monitorSocketFd, queryStream, strlen(queryStream), 0);
+    if(nBytesSent != strlen(queryStream))
+    {
+      fprintf(stderr, "[%s] Send failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      close(monitorSocketFd);
+      continue;
+    }
+
+    close(monitorSocketFd);
+  }
+
+  pthread_exit(NULL);
+  return NULL;
+}
 
 //void *Collector::_DataReceiveService(void *arg)
 //{
@@ -311,18 +358,18 @@ int main(int argc, char *argv[])
   using namespace event;
 
   int commandPort = 32100;
-  int dataPort = 32168;
+  int monitorCommandPort = 32101;
 
   if (argc < 2)
   {
-    printf("\nusage: collector ips [command-port] [collector-data-port]\n");
+    printf("\nusage: collector ips [command-port] [monitor-cmd-port]\n");
     printf("Options:\n");
     printf(
         "\tips\t\t\t\tList of IPs of all the collectors, include the server itself, separated by ','.\n");
     printf(
         "\tcommand-port\t\t\tPort number of command service. Default is 32100.\n");
     printf(
-        "\tcollector-data-port\t\tData port of remote collectors. Default is 32168.\n");
+        "\tmonitor-cmd-port\t\tCommand port for remote monitors. Default is 32101.\n");
     exit(1);
   }
 
@@ -337,15 +384,15 @@ int main(int argc, char *argv[])
     commandPort = atoi(argv[2]);
 
   if (argc >= 4)
-    dataPort = atoi(argv[3]);
+    monitorCommandPort = atoi(argv[3]);
 
-  Collector collector(vecIPs, commandPort, dataPort);
+  Collector collector(vecIPs, commandPort, monitorCommandPort);
   string testQuery1 =
       "{'query_uuid': 'uuuu-uuuu', 'query-content': 'select all from all'}";
   string testQuery2 =
       "{'query_uuid': 'aaaa-aaaa', 'query-content': '\"Hello World!\"'}";
-//  collector.RegisterQuery(testQuery1, 1);
-//  collector.RegisterQuery(testQuery2, 5);
+  collector.RegisterQuery(testQuery1, 1);
+  collector.RegisterQuery(testQuery2, 5);
   collector.Run();
 
   return 0;

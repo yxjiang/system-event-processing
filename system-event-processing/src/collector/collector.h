@@ -31,7 +31,7 @@ namespace event
 
 typedef struct
 {
-  const char *machineName;
+  const char *machineIP;
   time_t lastCommunicationTime;
 } MonitorProfile;
 
@@ -64,11 +64,11 @@ protected:
   /*!
    * Scan the registered query every second, and execute query if necessary
    */
-//  static void *_SubscribeExecutor(void *arg);
+  static void *_SubscribeExecutor(void *arg);
   /*!
    * Send the query to all monitors via multicast.
    */
-//  static void *_SubscribeExecutorWorker(void *arg);
+  static void *_SubscribeExecutorWorker(void *arg);
 //  static void *_DataReceiveService(void *arg);
 //  static void *_DataReceiveWorker(void *arg);
 

@@ -25,7 +25,7 @@ bool Monitor::firstDataFetched_ = false; //  push data would not start until fir
 
 pthread_rwlock_t Monitor::collectorStatusrwlock_;
 std::map<std::string, bool > Monitor ::collectorStatus_;    //  record status of all collectors
-int Monitor::commandServicePort_ = 32100; //  default port number of communication service
+int Monitor::commandServicePort_ = 32101; //  default port number of communication service
 int Monitor::commandServiceSocketFd_ = -1;
 int Monitor::collectorCommandPort_ = 32100;    //  default collector command port
 
@@ -39,7 +39,6 @@ int Monitor::collectorCommandPort_ = 32100;    //  default collector command por
 
 
 
-int Monitor::queryServicePort_ = 32100;
 int Monitor::queryServiceSocketFd_;
 
 
@@ -119,10 +118,12 @@ void Monitor::Run()
   //  start to collect meta-data from crawlers and put into stream
   pthread_create(&(this->collectThreadPid_), NULL, _CollectDataFromCrawlers, NULL);
 
+  //  initialize command service
+  pthread_create(&(this->commandServicePid_), NULL, _CommandService, NULL);
+
   //  initialize query service
 //  pthread_create(&(this->queryServicePid_), NULL, _QueryService, NULL);
-  //  initialize command service
-//  pthread_create(&(this->commandServicePid_), NULL, _CommandService, NULL);
+
 
 //
 //  //  register to collectors
@@ -140,7 +141,7 @@ void Monitor::Run()
 
   pthread_join(this->collectThreadPid_, NULL);
   pthread_join(this->queryServicePid_, NULL);
-//  pthread_join(this->communicationServicePid_, NULL);
+  pthread_join(this->commandServicePid_, NULL);
 //  pthread_join(this->pushDataServicePid_, NULL);
 }
 
@@ -304,120 +305,83 @@ void Monitor::_RegisterToCollectors()
       close(connectionSocketFd);
       continue;
     }
+    close(connectionSocketFd);
   }
+
 
 }
 
-///*!
-// * Thread entry function for communication service.
-// */
-//void *Monitor::_QueryService(void *arg)
-//{
-//  struct sockaddr_in serverAddr; // Server Internet address
-//  //  initialize server address
-//  bzero(&serverAddr, sizeof(serverAddr));
-//  serverAddr.sin_family = AF_INET;
-//  serverAddr.sin_addr.s_addr = htons(INADDR_ANY);
-//  serverAddr.sin_port = htons(MULTICAST_PORT);
-//  struct ip_mreq multicastRequest;  //  multicast request
-//  int addrLen;
-////  u_int yes = 1;
-//
-//  queryServiceSocketFd_ = socket(AF_INET, SOCK_DGRAM, 0);
-//  if (queryServiceSocketFd_ < 0)
-//  {
-//    fprintf(stderr, "[%s] Monitor communication service creates socket failed.\n", GetCurrentTime().c_str());
-//    exit(1);
-//  }
-//  else
-//    printf("[%s] Monitor communication service socket created...\n", GetCurrentTime().c_str());
-//
-//  //  allow multiple sockets to use the same PORT number
-////  if(setsockopt(commandServiceSocketFd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0)
-////  {
-////    fprintf(stderr, "[%s] Monitor communication service set multicast failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-////    exit(1);
-////  }
-//
-//  //  bind socket and address
-//  if (bind(queryServiceSocketFd_, (struct sockaddr*) &serverAddr, sizeof(serverAddr)))
-//  {
-//    fprintf(stderr, "[%s] Monitor communication service bind port: %d failed.\n", GetCurrentTime().c_str(), communicationServicePort_);
-//    exit(1);
-//  }
-//  else
-//    printf("[%s] Monitor communication service port binded to port %d...\n", GetCurrentTime().c_str(), communicationServicePort_);
-//
-//  multicastRequest.imr_multiaddr.s_addr = inet_addr(MULTICAST_GROUP);
-//  multicastRequest.imr_interface.s_addr = htons(INADDR_ANY);
-//  if(setsockopt(queryServiceSocketFd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &multicastRequest, sizeof(multicastRequest)) < 0)
-//  {
-//    fprintf(stderr, "[%s] Monitor communication service set multicast failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-//    exit(1);
-//  }
-//
-//  //  continuously receive data
-//  char dataBuffer[UDP_DATA_BUFFER];
-//  while(true)
-//  {
-//    int nbytes;
-//    if((nbytes = recvfrom(queryServiceSocketFd_, dataBuffer, UDP_DATA_BUFFER, 0, (struct sockaddr *) &serverAddr, (socklen_t *)&addrLen)) < 0)
-//    {
-//      fprintf(stderr, "[%s] Monitor recive query data failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-//    }
-//    else
-//    {
-//      fprintf(stdout, "[%s] Recived: %s.\n", GetCurrentTime().c_str(), dataBuffer);
-//    }
-//  }
-//
-//
-////  //  listen on port
-////  if (listen(commandServiceSocketFd, 5))
-////  {
-////    fprintf(stderr, "[%s] Monitor communication service listen failed.\n", GetCurrentTime().c_str());
-////    exit(1);
-////  }
-////  else
-////    printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime().c_str(), communicationServicePort_);
-////
-////  while (true)
-////  {
-////    if (true == commandServiceStop_)
-////      break;
-////
-////    int connectionSocket = accept(commandServiceSocketFd, NULL, 0);
-////    stringstream recvContent;
-////    int recvBytes;
-////    char buffer[1024];
-////    while ((recvBytes = recv(connectionSocket, buffer, 1024, 0)) > 0)
-////    {
-////      if (recvBytes < 0)
-////        fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
-////      recvContent << buffer;
-////    }
-////
-////    string contentString = recvContent.str();
-////    CommandPackage *package = new CommandPackage;
-////    package->content = contentString;
-////    pthread_t workerPid;
-////    pthread_create(&workerPid, &threadAttr_, _CommandServiceWorker, (void *)package);
-////
-////    close(connectionSocket);
-////  }
-//
-//  return NULL;
-//}
+/*!
+ * Thread entry function for command service.
+ */
+void *Monitor::_CommandService(void *arg)
+{
+  struct sockaddr_in serverAddr; // Server Internet address
+  //  initialize server address
+  bzero(&serverAddr, sizeof(serverAddr));
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_addr.s_addr = INADDR_ANY;
+  serverAddr.sin_port = htons(commandServicePort_);
 
-//void *Monitor::_CommandServiceWorker(void *arg)
-//{
-//  CommandPackage *package = (CommandPackage *)arg;
-//  fprintf(stdout, "[%s] Receive command %s.\n", GetCurrentTime().c_str(), package->content.c_str());
-//
-//  delete package;
-//  pthread_exit(NULL);
-//  return NULL;
-//}
+  commandServiceSocketFd_ = socket(AF_INET, SOCK_STREAM, 0);
+  if (commandServiceSocketFd_ < 0)
+  {
+    fprintf(stderr, "[%s] Monitor command service creates socket failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
+
+  //  bind socket and address
+  if (bind(commandServiceSocketFd_, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
+  {
+    fprintf(stderr, "[%s] Monitor command service bind port: %d failed. Reason: %s.\n", GetCurrentTime().c_str(), commandServicePort_, strerror(errno));
+    close(commandServiceSocketFd_);
+    exit(1);
+  }
+
+  //  listen on port
+  if (listen(commandServiceSocketFd_, 50) < 0)
+  {
+    fprintf(stderr, "[%s] Monitor command service listen failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    close(commandServiceSocketFd_);
+    exit(1);
+  }
+  else
+    printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime().c_str(), commandServicePort_);
+
+  while (true)
+  {
+    int connectionSocket = accept(commandServiceSocketFd_, NULL, 0);
+    stringstream recvContent;
+    int recvBytes;
+    char buffer[1024];
+    while ((recvBytes = recv(connectionSocket, buffer, 1024, 0)) > 0)
+    {
+      if (recvBytes < 0)
+        fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
+      recvContent << buffer;
+    }
+
+    string contentString = recvContent.str();
+    CommandPackage *package = new CommandPackage;
+    package->content = contentString;
+    pthread_t workerPid;
+    pthread_create(&workerPid, &threadAttr_, _CommandServiceWorker, (void *)package);
+
+    close(connectionSocket);
+  }
+
+  return NULL;
+}
+
+void *Monitor::_CommandServiceWorker(void *arg)
+{
+  CommandPackage *package = (CommandPackage *)arg;
+  fprintf(stdout, "[%s] Receive command [%s].\n", GetCurrentTime().c_str(), package->content.c_str());
+
+  delete package;
+  pthread_exit(NULL);
+  return NULL;
+}
 //
 ///*!
 // * Send profile data to collectors.
@@ -673,7 +637,7 @@ int main(int argc, char *argv[])
 
   int monitorRate = 1;
   int streamSize = 60;
-  int commandPort = 32100;
+  int commandPort = 32101;
   int collectorCommandPort = 32100;
 
   if (argc == 1 || argc < 2 || argc > 6)
