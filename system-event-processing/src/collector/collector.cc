@@ -130,7 +130,7 @@ void *Collector::_CommandService(void *arg)
 void *Collector::_CommandServiceWorker(void *arg)
 {
   int *connectionSocketFd = (int *)arg;
-  char contentBuffer[4096];
+  char contentBuffer[BUFFER_SIZE];
   int nbytes = 0;
   if((nbytes = recv(*connectionSocketFd, contentBuffer, sizeof(contentBuffer), 0)) < 0)
   {

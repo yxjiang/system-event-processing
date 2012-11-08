@@ -20,7 +20,7 @@
 namespace event
 {
 ///*  Maximum buffer size for UDP packet  */
-//const static unsigned int UDP_DATA_BUFFER = 1464;
+const static unsigned int BUFFER_SIZE = 4096;
 /*  sleep interval, 50 millisecond  */
 const static unsigned long int CRAWLER_SLEEP_TIME_NANOSEC = 50000000;
 
