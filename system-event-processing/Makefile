@@ -2,7 +2,8 @@
 
 # Created on: Mar 21, 2012
 #     Author: yxjiang
-INCLUDE := 
+#INCLUDE := /usr/local/boost_1_49_0
+INCLUDE := -I~/programming/boost_1_49_0
 
 FLAG := -Wall
 
@@ -44,7 +45,7 @@ monitor: crawler $(MONITOR_SRC) common eventstream
 
 collector: $(COLLECTOR_SRC) common
 	g++ $(INCLUDE) $(FLAG) -c $(UTILITY_SRC) -o $(UTILITY_OBJ)
-	g++ $(FLAG) -c $(COLLECTOR_SRC) -o $(COLLECTOR_OBJ)
+	g++ $(INCLUDE) $(FLAG) -c $(COLLECTOR_SRC) -o $(COLLECTOR_OBJ)
 	g++ $(FLAG) $(COLLECTOR_OBJ) $(COMMON_OBJ) $(UTILITY_OBJ) $(LIBS) -o collector
 
 common-test: $(COMMON_TEST_SRC) $(COMMON_SRC)

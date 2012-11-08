@@ -275,6 +275,12 @@ void *Collector::_SubscribeExecutorWorker(void *arg)
       close(monitorSocketFd);
       continue;
     }
+    else{
+      //  successfully send query to monitor
+      pthread_rwlock_wrlock(&monitorProfileRwLock_);
+      monitorProfile->communicationFailCount = 0;
+      pthread_rwlock_unlock(&monitorProfileRwLock_);
+    }
 
     close(monitorSocketFd);
   }
