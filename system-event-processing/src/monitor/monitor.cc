@@ -353,13 +353,14 @@ void *Monitor::_CommandService(void *arg)
     int connectionSocket = accept(commandServiceSocketFd_, NULL, 0);
     stringstream recvContent;
     int recvBytes;
-    char buffer[4096];
-    while ((recvBytes = recv(connectionSocket, buffer, strlen(buffer), 0)) > 0)
+    char buffer[1024];
+    while ((recvBytes = recv(connectionSocket, buffer, 1024, 0)) > 0)
     {
       if (recvBytes < 0)
         fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
       recvContent << buffer;
     }
+    bzero(buffer, sizeof(buffer));
 
     string contentString = recvContent.str();
     CommandPackage *package = new CommandPackage;
@@ -376,7 +377,7 @@ void *Monitor::_CommandService(void *arg)
 void *Monitor::_CommandServiceWorker(void *arg)
 {
   CommandPackage *package = (CommandPackage *)arg;
-  fprintf(stdout, "[%s] Receive command [%s].\n", GetCurrentTime().c_str(), package->content.c_str());
+  fprintf(stdout, "[%s] Receive command %s.\n", GetCurrentTime().c_str(), package->content.c_str());
 
   delete package;
   pthread_exit(NULL);
