@@ -186,13 +186,15 @@ void Collector::RegisterQuery(const string &queryContent, int queryInterval)
 
 void *Collector::_SubscribeExecutor(void *arg)
 {
+  stringstream queryStream;
   while (true)
   {
     time_t curTime;
     time(&curTime);
-
     map<boost::uuids::uuid, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
-    stringstream queryStream;
+    //  concatenate queries
+    queryStream.str("");
+    int count = 0;
     for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
     {
       QueryProfile *profile = profileItr->second;
@@ -203,10 +205,11 @@ void *Collector::_SubscribeExecutor(void *arg)
         profile->lastCalled = curTime;
         queryStream << "\n-----\n" << profile->queryContent;    //  pack the queries together
         pthread_rwlock_unlock(&registeredQueryProfileRwlock_);
+        ++count;
       }
     }
     const char *queryStr = queryStream.str().c_str();
-
+//    fprintf(stdout, "[%s] %d added:\n%s.\n", GetCurrentTime().c_str(), count, queryStr);
     pthread_t workerPid;
     pthread_create(&workerPid, &threadAttr_, _SubscribeExecutorWorker, (void *) queryStr);
     ThreadSleep(1, 0);
@@ -219,6 +222,7 @@ void *Collector::_SubscribeExecutor(void *arg)
 void *Collector::_SubscribeExecutorWorker(void *arg)
 {
   const char *queryStream = (const char *)arg;
+  fprintf(stdout, "Send [%s]\n", queryStream);
   struct sockaddr_in monitorAddr;
   bzero(&monitorAddr, sizeof(monitorAddr));
   monitorAddr.sin_family = AF_INET;
@@ -391,7 +395,7 @@ int main(int argc, char *argv[])
       "{'query_uuid': 'uuuu-uuuu', 'query-content': 'select all from all'}";
   string testQuery2 =
       "{'query_uuid': 'aaaa-aaaa', 'query-content': '\"Hello World!\"'}";
-  collector.RegisterQuery(testQuery1, 1);
+  collector.RegisterQuery(testQuery1, 3);
   collector.RegisterQuery(testQuery2, 5);
   collector.Run();
 

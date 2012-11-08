@@ -353,8 +353,8 @@ void *Monitor::_CommandService(void *arg)
     int connectionSocket = accept(commandServiceSocketFd_, NULL, 0);
     stringstream recvContent;
     int recvBytes;
-    char buffer[1024];
-    while ((recvBytes = recv(connectionSocket, buffer, 1024, 0)) > 0)
+    char buffer[4096];
+    while ((recvBytes = recv(connectionSocket, buffer, strlen(buffer), 0)) > 0)
     {
       if (recvBytes < 0)
         fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
