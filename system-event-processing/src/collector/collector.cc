@@ -152,10 +152,12 @@ void *Collector::_CommandServiceWorker(void *arg)
   {
     const char *machineName = commandTree.get<string>("machineName").c_str();
     MonitorProfile *newMonitorProfile = new MonitorProfile;
-    newMonitorProfile->machineIP = machineName;
+    int machineIPLen = strlen(machineName);
+    newMonitorProfile->machineIP = new char[machineIPLen];
+    strcpy(newMonitorProfile->machineIP, machineName);
     time_t curTime;
     time(&curTime);
-    newMonitorProfile->lastCommunicationTime = curTime;
+    newMonitorProfile->communicationFailCount = 0;
     pthread_rwlock_wrlock(&monitorProfileRwLock_);
     monitorProfile_.push_back(newMonitorProfile);
     pthread_rwlock_unlock(&monitorProfileRwLock_);
@@ -174,7 +176,9 @@ void Collector::RegisterQuery(const string &queryContent, int queryInterval)
   QueryProfile *profile = new QueryProfile;
   profile->uuid = uuid;
   profile->lastCalled = -1;
-  profile->queryContent = queryContent.c_str();
+  int contentLength = queryContent.size();
+  profile->queryContent = new char[contentLength];
+  strcpy(profile->queryContent, queryContent.c_str());
   profile->queryInterval = queryInterval;
   pthread_rwlock_wrlock(&registeredQueryProfileRwlock_);
   registeredQueryProfiles_.insert(
@@ -230,14 +234,13 @@ void *Collector::_SubscribeExecutorWorker(void *arg)
   monitorAddr.sin_family = AF_INET;
   monitorAddr.sin_port = htons(monitorCommandServicePort_);
 
-  std::vector<MonitorProfile*>::iterator monitorItr = monitorProfile_.begin();
+  vector<MonitorProfile*>::iterator monitorItr = monitorProfile_.begin();
   for(; monitorItr != monitorProfile_.end(); ++monitorItr)
   {
     MonitorProfile *monitorProfile = *monitorItr;
     struct hostent *hostent;
     hostent = gethostbyname(monitorProfile->machineIP);
     bcopy(hostent->h_addr, &monitorAddr.sin_addr.s_addr, hostent->h_length);
-
     int monitorSocketFd = socket(AF_INET, SOCK_STREAM, 0);
     if(monitorSocketFd < 0)
     {
@@ -246,7 +249,21 @@ void *Collector::_SubscribeExecutorWorker(void *arg)
     }
     if(connect(monitorSocketFd, (struct sockaddr *)&monitorAddr, sizeof(monitorAddr)) < 0)
     {
-      fprintf(stderr, "[%s] Connect to remote monitor failed when sending query. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      //  remove monitor that cannot be connected for 10 times
+      fprintf(stderr, "[%s] Cannot connect to monitor %s.\n", GetCurrentTime().c_str(), monitorProfile->machineIP);
+      pthread_rwlock_wrlock(&monitorProfileRwLock_);
+      ++monitorProfile->communicationFailCount;
+      if(monitorProfile->communicationFailCount > 3)
+      {
+        fprintf(stderr, "[%s] Remove monitor %s from list.\n", GetCurrentTime().c_str(), monitorProfile->machineIP);
+        monitorItr = monitorProfile_.erase(monitorItr);
+        if(monitorItr == monitorProfile_.end())
+        {
+          close(monitorSocketFd);
+          break;
+        }
+      }
+      pthread_rwlock_unlock(&monitorProfileRwLock_);
       close(monitorSocketFd);
       continue;
     }

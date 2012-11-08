@@ -31,14 +31,14 @@ namespace event
 
 typedef struct
 {
-  const char *machineIP;
-  time_t lastCommunicationTime;
+  char *machineIP;
+  int communicationFailCount;
 } MonitorProfile;
 
 typedef struct
 {
   boost::uuids::uuid uuid;
-  const char *queryContent;
+  char *queryContent;
   long lastCalled;
   int queryInterval;
 } QueryProfile;
