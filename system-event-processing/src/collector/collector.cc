@@ -174,18 +174,18 @@ void Collector::RegisterQuery(const string &queryContent, int queryInterval)
 {
   boost::uuids::uuid uuid = boost::uuids::random_generator()();
   QueryProfile *profile = new QueryProfile;
-  profile->uuid = uuid;
+  stringstream ss;
+  ss << uuid;
+  profile->uuid = ss.str();
   profile->lastCalled = -1;
   int contentLength = queryContent.size();
   profile->queryContent = new char[contentLength];
   strcpy(profile->queryContent, queryContent.c_str());
   profile->queryInterval = queryInterval;
   pthread_rwlock_wrlock(&registeredQueryProfileRwlock_);
-  registeredQueryProfiles_.insert(
-      make_pair<boost::uuids::uuid, QueryProfile*>(uuid, profile));
+  registeredQueryProfiles_.insert(make_pair<boost::uuids::uuid, QueryProfile*>(uuid, profile));
   pthread_rwlock_unlock(&registeredQueryProfileRwlock_);
-  fprintf(stdout, "[%s] New query registered: %s.\n", GetCurrentTime().c_str(),
-      profile->queryContent);
+  fprintf(stdout, "[%s] New query registered: %s.\n", GetCurrentTime().c_str(), profile->queryContent);
 }
 
 void *Collector::_SubscribeExecutor(void *arg)
@@ -193,28 +193,38 @@ void *Collector::_SubscribeExecutor(void *arg)
   stringstream queryStream;
   while (true)
   {
+    queryStream.str("");
+    boost::property_tree::ptree commandJsonTree;
+    commandJsonTree.put("commandType", "query");
+    boost::property_tree::ptree queryJsonTree;  //  put all the queries into a property tree
+    map<boost::uuids::uuid, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
+
+    int wakedQueryCount = 0;
     time_t curTime;
     time(&curTime);
-
-    map<boost::uuids::uuid, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
-    queryStream.str("");
-    int wakedQueryCount = 0;
     for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
     {
       QueryProfile *profile = profileItr->second;
-//      fprintf(stdout, "[%s] lastCalled: %ld, curTime: %ld, cur - last: %ld.\n", GetCurrentTime().c_str(), profile->lastCalled, curTime, curTime - profile->lastCalled);
       if (profile->lastCalled == -1 || (curTime - profile->lastCalled == profile->queryInterval)) //  time is up
       {
+        boost::property_tree::ptree separateQueryJsonTree;  //  put each query into a property tree
         ++wakedQueryCount;
         pthread_rwlock_wrlock(&registeredQueryProfileRwlock_);
         profile->lastCalled = curTime;
-        queryStream << "\n-----\n" << profile->queryContent;    //  pack the queries together
+        separateQueryJsonTree.put<string>("query-uuid", profile->uuid);
+        separateQueryJsonTree.put<char*>("query-content", profile->queryContent);
         pthread_rwlock_unlock(&registeredQueryProfileRwlock_);
+        queryJsonTree.push_back(make_pair("", separateQueryJsonTree));
       }
     }
+
+    commandJsonTree.push_back(make_pair("queries", queryJsonTree));
+    write_json(queryStream, commandJsonTree);
     if(wakedQueryCount > 0)
     {
-      const char *queryStr = queryStream.str().c_str();
+//      const char *queryStr = queryStream.str().c_str();
+      char queryStr[65536];
+      strcpy(queryStr, queryStream.str().c_str());
       fprintf(stdout, "[%s] Send %s.\n", GetCurrentTime().c_str(), queryStr);
       pthread_t workerPid;
       pthread_create(&workerPid, &threadAttr_, _SubscribeExecutorWorker, (void *) queryStr);

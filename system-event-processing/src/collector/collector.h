@@ -37,7 +37,7 @@ typedef struct
 
 typedef struct
 {
-  boost::uuids::uuid uuid;
+  std::string uuid;
   char *queryContent;
   long lastCalled;
   int queryInterval;
