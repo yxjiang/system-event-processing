@@ -19,7 +19,7 @@ int Collector::commandServicePort_ = 32100;
 
 int Collector::monitorCommandServicePort_ = 32101; //  default port for monitor to receive commands
 pthread_t Collector::subscribeExecutorPid_;
-map<boost::uuids::uuid, QueryProfile*> Collector::registeredQueryProfiles_;
+map<string, QueryProfile*> Collector::registeredQueryProfiles_;
 pthread_rwlock_t Collector::registeredQueryProfileRwlock_;
 
 //int Collector::dataServicePort_ = 32168;    //  default port number to receive data
@@ -183,7 +183,7 @@ void Collector::RegisterQuery(const string &queryContent, int queryInterval)
   strcpy(profile->queryContent, queryContent.c_str());
   profile->queryInterval = queryInterval;
   pthread_rwlock_wrlock(&registeredQueryProfileRwlock_);
-  registeredQueryProfiles_.insert(make_pair<boost::uuids::uuid, QueryProfile*>(uuid, profile));
+  registeredQueryProfiles_.insert(make_pair<string, QueryProfile*>(profile->uuid, profile));
   pthread_rwlock_unlock(&registeredQueryProfileRwlock_);
   fprintf(stdout, "[%s] New query registered: %s.\n", GetCurrentTime().c_str(), profile->queryContent);
 }
@@ -197,11 +197,12 @@ void *Collector::_SubscribeExecutor(void *arg)
     boost::property_tree::ptree commandJsonTree;
     commandJsonTree.put("commandType", "query");
     boost::property_tree::ptree queryJsonTree;  //  put all the queries into a property tree
-    map<boost::uuids::uuid, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
+    map<string, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
 
     int wakedQueryCount = 0;
     time_t curTime;
     time(&curTime);
+//    fprintf(stdout, "[%s] There are %lu queries registered.\n", GetCurrentTime().c_str(), registeredQueryProfiles_.size());
     for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
     {
       QueryProfile *profile = profileItr->second;
@@ -217,7 +218,15 @@ void *Collector::_SubscribeExecutor(void *arg)
         queryJsonTree.push_back(make_pair("", separateQueryJsonTree));
       }
     }
-
+    fprintf(stdout, "[%s] There are %d queries waked.\n", GetCurrentTime().c_str(), wakedQueryCount);
+    if(wakedQueryCount == 0)
+    {
+      for(profileItr = registeredQueryProfiles_.begin(); profileItr != registeredQueryProfiles_.end(); ++profileItr)
+      {
+        fprintf(stdout, "\t[%s] curTime: %lu, lastCalled: %lu, distinct: %d\n", GetCurrentTime().c_str(),
+            curTime, profileItr->second->lastCalled, (curTime - profileItr->second->lastCalled == profileItr->second->queryInterval));
+      }
+    }
     commandJsonTree.push_back(make_pair("queries", queryJsonTree));
     write_json(queryStream, commandJsonTree);
     if(wakedQueryCount > 0)
@@ -225,7 +234,7 @@ void *Collector::_SubscribeExecutor(void *arg)
 //      const char *queryStr = queryStream.str().c_str();
       char queryStr[65536];
       strcpy(queryStr, queryStream.str().c_str());
-      fprintf(stdout, "[%s] Send %s.\n", GetCurrentTime().c_str(), queryStr);
+//      fprintf(stdout, "[%s] Send %s.\n", GetCurrentTime().c_str(), queryStr);
       pthread_t workerPid;
       pthread_create(&workerPid, &threadAttr_, _SubscribeExecutorWorker, (void *) queryStr);
     }

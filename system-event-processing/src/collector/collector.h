@@ -81,7 +81,7 @@ private:
 
   static int monitorCommandServicePort_;
   static pthread_t subscribeExecutorPid_; //  the thread that in charge of sending query to monitors
-  static std::map<boost::uuids::uuid, QueryProfile*> registeredQueryProfiles_;
+  static std::map<std::string, QueryProfile*> registeredQueryProfiles_;
   static pthread_rwlock_t registeredQueryProfileRwlock_;
   //  static int dataServicePort_;
   //  static bool dataServiceStop_;
