@@ -206,7 +206,7 @@ void *Collector::_SubscribeExecutor(void *arg)
     for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
     {
       QueryProfile *profile = profileItr->second;
-      if (profile->lastCalled == -1 || (curTime - profile->lastCalled == profile->queryInterval)) //  time is up
+      if (profile->lastCalled == -1 || (curTime - profile->lastCalled >= profile->queryInterval)) //  time is up
       {
         boost::property_tree::ptree separateQueryJsonTree;  //  put each query into a property tree
         ++wakedQueryCount;
@@ -218,15 +218,15 @@ void *Collector::_SubscribeExecutor(void *arg)
         queryJsonTree.push_back(make_pair("", separateQueryJsonTree));
       }
     }
-    fprintf(stdout, "[%s] There are %d queries waked.\n", GetCurrentTime().c_str(), wakedQueryCount);
-    if(wakedQueryCount == 0)
-    {
-      for(profileItr = registeredQueryProfiles_.begin(); profileItr != registeredQueryProfiles_.end(); ++profileItr)
-      {
-        fprintf(stdout, "\t[%s] curTime: %lu, lastCalled: %lu, distinct: %lu\n", GetCurrentTime().c_str(),
-            curTime, profileItr->second->lastCalled, (curTime - profileItr->second->lastCalled));
-      }
-    }
+//    fprintf(stdout, "[%s] There are %d queries waked.\n", GetCurrentTime().c_str(), wakedQueryCount);
+//    if(wakedQueryCount == 0)
+//    {
+//      for(profileItr = registeredQueryProfiles_.begin(); profileItr != registeredQueryProfiles_.end(); ++profileItr)
+//      {
+//        fprintf(stdout, "\t[%s] curTime: %lu, lastCalled: %lu, distinct: %lu\n", GetCurrentTime().c_str(),
+//            curTime, profileItr->second->lastCalled, (curTime - profileItr->second->lastCalled));
+//      }
+//    }
     commandJsonTree.push_back(make_pair("queries", queryJsonTree));
     write_json(queryStream, commandJsonTree);
     if(wakedQueryCount > 0)
