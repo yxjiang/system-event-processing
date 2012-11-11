@@ -223,8 +223,8 @@ void *Collector::_SubscribeExecutor(void *arg)
     {
       for(profileItr = registeredQueryProfiles_.begin(); profileItr != registeredQueryProfiles_.end(); ++profileItr)
       {
-        fprintf(stdout, "\t[%s] curTime: %lu, lastCalled: %lu, distinct: %d\n", GetCurrentTime().c_str(),
-            curTime, profileItr->second->lastCalled, (curTime - profileItr->second->lastCalled == profileItr->second->queryInterval));
+        fprintf(stdout, "\t[%s] curTime: %lu, lastCalled: %lu, distinct: %lu\n", GetCurrentTime().c_str(),
+            curTime, profileItr->second->lastCalled, (curTime - profileItr->second->lastCalled));
       }
     }
     commandJsonTree.push_back(make_pair("queries", queryJsonTree));
