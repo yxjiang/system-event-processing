@@ -3,11 +3,12 @@
 # Created on: Mar 21, 2012
 #     Author: yxjiang
 #INCLUDE := /usr/local/boost_1_49_0
-INCLUDE := -I~/programming/boost_1_49_0
+INCLUDE := -I/home/users/yjian004/programming/boost_1_49_0
 
 FLAG := -Wall
 
-LIBS := -L/usr/lib/x86-64-linux-gnu -L/usr/local/lib -lpthread -lprotobuf
+#LIBS := -L/usr/lib/x86-64-linux-gnu -L/usr/local/lib -lpthread -lprotobuf	#include protocol buffers
+LIBS := -L/usr/lib/x86-64-linux-gnu -L/usr/local/lib -lpthread
 
 UTILITY_SRC := src/common/utility.pb.cc
 UTILITY_OBJ := utility.o
@@ -17,8 +18,6 @@ MONITOR_SRC := src/monitor/monitor.cc
 
 COMMON_SRC := src/common/common.cc
 COMMON_OBJ := common.o
-COMMON_TEST_SRC := test/common/common_test.cc
-COMMON_TEST_OBJ := common-test.o
 
 STREAM_SRC := src/common/eventstream.cc
 STREAM_OBJ := eventstream.o
@@ -32,21 +31,22 @@ COLLECTOR_OBJ := collector.o
 common: $(COMMON_SRC)
 	g++ $(INCLUDE) $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)
 
+utility: $(UTILITY_SRC)
+	g++ $(INCLUDE) $(FLAG) -c $(UTILITY_SRC) -o $(UTILITY_OBJ)
+
 crawler: $(CRAWLER_SRC) common
 	g++ $(INCLUDE) $(FLAG) -c $(CRAWLER_SRC) -o $(CRAWLER_OBJ)
 	
 eventstream: $(STREAM_SRC) common
 	g++ $(INCLUDE) $(FLAG) -c $(STREAM_SRC) -o $(STREAM_OBJ)
 	
-monitor: crawler $(MONITOR_SRC) common eventstream
-	g++ $(INCLUDE) $(FLAG) -c $(UTILITY_SRC) -o $(UTILITY_OBJ)
+monitor: crawler $(MONITOR_SRC) common eventstream 
 	g++ $(INCLUDE) $(FLAG) -c $(MONITOR_SRC) -o $(MONITOR_OBJ)
-	g++ $(INCLUDE) $(FLAG) $(CRAWLER_OBJ) $(STREAM_OBJ) $(MONITOR_OBJ) $(COMMON_OBJ) $(UTILITY_OBJ) $(LIBS) -o monitor
+	g++ $(INCLUDE) $(FLAG) $(CRAWLER_OBJ) $(STREAM_OBJ) $(MONITOR_OBJ) $(COMMON_OBJ) $(LIBS) -o monitor
 
-collector: $(COLLECTOR_SRC) common
-	g++ $(INCLUDE) $(FLAG) -c $(UTILITY_SRC) -o $(UTILITY_OBJ)
+collector: $(COLLECTOR_SRC) common 
 	g++ $(INCLUDE) $(FLAG) -c $(COLLECTOR_SRC) -o $(COLLECTOR_OBJ)
-	g++ $(FLAG) $(COLLECTOR_OBJ) $(COMMON_OBJ) $(UTILITY_OBJ) $(LIBS) -o collector
+	g++ $(FLAG) $(COLLECTOR_OBJ) $(COMMON_OBJ) $(LIBS) -o collector
 
 common-test: $(COMMON_TEST_SRC) $(COMMON_SRC)
 	g++ $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)

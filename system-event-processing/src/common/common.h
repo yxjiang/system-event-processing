@@ -37,7 +37,7 @@ const static unsigned long int CRAWLER_SAMPLE_TIME_NANOSEC = 50000000;
  */
 inline std::string TimeToString(const time_t &timestamp)
 {
-  struct tm *time = gmtime(&timestamp);
+  struct tm *time = localtime(&timestamp);
   char out_buf[128];
   strftime(out_buf, 128, "%Y-%m-%d %Z %X", time);
   std::string str = out_buf;

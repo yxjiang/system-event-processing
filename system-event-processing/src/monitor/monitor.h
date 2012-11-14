@@ -26,7 +26,7 @@
 #include <boost/lexical_cast.hpp>
 #include "../common/common.h"
 #include "../common/eventstream.h"
-#include "../common/utility.pb.h"
+//#include "../common/utility.pb.h"
 #include "crawler.h"
 
 

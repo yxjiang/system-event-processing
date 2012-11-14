@@ -253,12 +253,12 @@ const char *Monitor::_AssembleDynamicMetaData()
     fprintf(stderr, "size = 0\n");
   }
 
-  utility::MetaData metaData;
-  metaData.set_monitoruuid(machineUuidStr_);
-  metaData.set_jsonstring(strJson);
+//  utility::MetaData metaData;
+//  metaData.set_monitoruuid(machineUuidStr_);
+//  metaData.set_jsonstring(strJson);
 
-//  return strJson.c_str();
-  return metaData.SerializeAsString().c_str();
+  return strJson.c_str();
+//  return metaData.SerializeAsString().c_str();
 }
 
 void Monitor::_RegisterToCollectors()
@@ -306,8 +306,8 @@ void Monitor::_RegisterToCollectors()
       continue;
     }
     close(connectionSocketFd);
+    fprintf(stdout, "[%s] Register to collector (%s) successfully.\n", GetCurrentTime().c_str(), collectorStatusItr->first.c_str());
   }
-
 
 }
 

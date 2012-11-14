@@ -30,7 +30,7 @@ Collector::Collector(vector<string> vecPeerCollectorIPs, int communicationPort,
 {
   monitorCommandServicePort_ = monitorCommunicationPort;
   //  suppress the protobuf logger
-  google::protobuf::SetLogHandler(NULL);
+//  google::protobuf::SetLogHandler(NULL);
   int ret = pthread_attr_init(&threadAttr_);
   if (ret != 0)
   {
@@ -46,8 +46,22 @@ Collector::Collector(vector<string> vecPeerCollectorIPs, int communicationPort,
     exit(1);
   }
 
-  pthread_rwlock_init(&monitorProfileRwLock_, NULL);
-  pthread_rwlock_init(&registeredQueryProfileRwlock_, NULL);
+  //  initialize lock related things
+  ret = pthread_rwlockattr_init(&this->wrLockAttr);
+  if(ret < 0)
+  {
+    fprintf(stderr, "[%s] Initialize read write lock attribute failed.\n", GetCurrentTime().c_str());
+    exit(1);
+  }
+  ret = pthread_rwlockattr_setkind_np(&this->wrLockAttr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+  if(ret < 0)
+  {
+    fprintf(stderr, "[%s] Set read write lock attribute failed.\n", GetCurrentTime().c_str());
+    exit(1);
+  }
+
+  pthread_rwlock_init(&monitorProfileRwLock_, &this->wrLockAttr);
+  pthread_rwlock_init(&registeredQueryProfileRwlock_, &this->wrLockAttr);
 
 }
 
@@ -103,12 +117,8 @@ void *Collector::_CommandService(void *arg)
   else
     fprintf(stdout, "[%s] Collector command service listening on port %d...\n", GetCurrentTime().c_str(), commandServicePort_);
 
-  int count = 0;
   while (true)
   {
-    if (++count % 100 == 0)
-      fprintf(stdout, "[%s] Received %d requests.\n", GetCurrentTime().c_str(),
-          count);
     int connectionSocketFd = accept(commandServerSocketFd, NULL, 0);
     if (connectionSocketFd < 0)
     {
@@ -159,7 +169,19 @@ void *Collector::_CommandServiceWorker(void *arg)
     time(&curTime);
     newMonitorProfile->communicationFailCount = 0;
     pthread_rwlock_wrlock(&monitorProfileRwLock_);
-    monitorProfile_.push_back(newMonitorProfile);
+    fprintf(stdout, "[%s] New registration request from (%s) come.\n", GetCurrentTime().c_str(), newMonitorProfile->machineIP);
+    bool duplicate = false;
+    for(size_t i = 0; i < monitorProfile_.size(); ++i)
+    {
+      if(strcmp(monitorProfile_[i]->machineIP, machineName) == 0)
+      {
+        duplicate = true;
+        break;
+      }
+    }
+    if(false == duplicate)
+      monitorProfile_.push_back(newMonitorProfile);
+
     pthread_rwlock_unlock(&monitorProfileRwLock_);
     fprintf(stdout, "[%s] Register new monitor with name [%s], now size is %lu.\n",
         GetCurrentTime().c_str(), newMonitorProfile->machineIP, monitorProfile_.size());
@@ -202,7 +224,7 @@ void *Collector::_SubscribeExecutor(void *arg)
     int wakedQueryCount = 0;
     time_t curTime;
     time(&curTime);
-//    fprintf(stdout, "[%s] There are %lu queries registered.\n", GetCurrentTime().c_str(), registeredQueryProfiles_.size());
+    fprintf(stdout, "[%s] There are %lu monitor registered.\n", GetCurrentTime().c_str(), monitorProfile_.size());
     for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
     {
       QueryProfile *profile = profileItr->second;
@@ -269,7 +291,8 @@ void *Collector::_SubscribeExecutorWorker(void *arg)
     if(connect(monitorSocketFd, (struct sockaddr *)&monitorAddr, sizeof(monitorAddr)) < 0)
     {
       //  remove monitor that cannot be connected for 10 times
-      fprintf(stderr, "[%s] Cannot connect to monitor %s.\n", GetCurrentTime().c_str(), monitorProfile->machineIP);
+      fprintf(stderr, "[%s] Cannot connect to monitor %s, failed %d times.\n", GetCurrentTime().c_str(),
+          monitorProfile->machineIP, monitorProfile->communicationFailCount);
       pthread_rwlock_wrlock(&monitorProfileRwLock_);
       ++monitorProfile->communicationFailCount;
       if(monitorProfile->communicationFailCount > 3)
@@ -279,10 +302,14 @@ void *Collector::_SubscribeExecutorWorker(void *arg)
         if(monitorItr == monitorProfile_.end())
         {
           close(monitorSocketFd);
+          pthread_rwlock_unlock(&monitorProfileRwLock_);
           break;
         }
       }
-      pthread_rwlock_unlock(&monitorProfileRwLock_);
+      if(monitorItr != monitorProfile_.end())
+      {
+        pthread_rwlock_unlock(&monitorProfileRwLock_);
+      }
       close(monitorSocketFd);
       continue;
     }

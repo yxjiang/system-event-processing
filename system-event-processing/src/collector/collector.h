@@ -23,7 +23,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include "../common/utility.pb.h"
+//#include "../common/utility.pb.h"
 #include "../common/common.h"
 
 namespace event
@@ -74,6 +74,7 @@ protected:
 
 private:
   static std::vector<MonitorProfile*> monitorProfile_;
+  pthread_rwlockattr_t wrLockAttr;
   static pthread_rwlock_t monitorProfileRwLock_;
   static pthread_attr_t threadAttr_;
   static pthread_t commandServicePid_;
