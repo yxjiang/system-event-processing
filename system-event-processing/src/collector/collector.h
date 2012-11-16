@@ -31,7 +31,7 @@ namespace event
 
 typedef struct
 {
-  char *machineIP;
+  std::string machineIP;
   int communicationFailCount;
 } MonitorProfile;
 
@@ -73,7 +73,7 @@ protected:
 //  static void *_DataReceiveWorker(void *arg);
 
 private:
-  static std::vector<MonitorProfile*> monitorProfile_;
+  static std::vector<MonitorProfile> monitorProfile_;
   pthread_rwlockattr_t wrLockAttr;
   static pthread_rwlock_t monitorProfileRwLock_;
   static pthread_attr_t threadAttr_;

@@ -11,7 +11,7 @@ namespace event
 {
 using namespace std;
 
-std::vector<MonitorProfile*> Collector::monitorProfile_;
+std::vector<MonitorProfile> Collector::monitorProfile_;
 pthread_rwlock_t Collector::monitorProfileRwLock_;
 pthread_attr_t Collector::threadAttr_;
 pthread_t Collector::commandServicePid_;
@@ -161,30 +161,30 @@ void *Collector::_CommandServiceWorker(void *arg)
   if(0 == strcmp(commandType, "registration"))
   {
     const char *machineName = commandTree.get<string>("machineName").c_str();
-    MonitorProfile *newMonitorProfile = new MonitorProfile;
-    int machineIPLen = strlen(machineName);
-    newMonitorProfile->machineIP = new char[machineIPLen];
-    strcpy(newMonitorProfile->machineIP, machineName);
+    MonitorProfile newMonitorProfile;
+    newMonitorProfile.machineIP = machineName;
     time_t curTime;
     time(&curTime);
-    newMonitorProfile->communicationFailCount = 0;
-    pthread_rwlock_wrlock(&monitorProfileRwLock_);
-    fprintf(stdout, "[%s] New registration request from (%s) come.\n", GetCurrentTime().c_str(), newMonitorProfile->machineIP);
+    newMonitorProfile.communicationFailCount = 0;
+    fprintf(stdout, "[%s] New registration request from (%s) come.\n", GetCurrentTime().c_str(), newMonitorProfile.machineIP.c_str());
     bool duplicate = false;
+    pthread_rwlock_wrlock(&monitorProfileRwLock_);
     for(size_t i = 0; i < monitorProfile_.size(); ++i)
     {
-      if(strcmp(monitorProfile_[i]->machineIP, machineName) == 0)
+      if(monitorProfile_[i].machineIP.compare(machineName) == 0)
       {
         duplicate = true;
+        fprintf(stdout, "[%s] Monitor (%s) reconnected.\n", GetCurrentTime().c_str(), newMonitorProfile.machineIP.c_str());
         break;
       }
     }
     if(false == duplicate)
       monitorProfile_.push_back(newMonitorProfile);
 
+    size_t curMonitorSize = monitorProfile_.size();
     pthread_rwlock_unlock(&monitorProfileRwLock_);
     fprintf(stdout, "[%s] Register new monitor with name [%s], now size is %lu.\n",
-        GetCurrentTime().c_str(), newMonitorProfile->machineIP, monitorProfile_.size());
+        GetCurrentTime().c_str(), newMonitorProfile.machineIP.c_str(), curMonitorSize);
   }
 
   pthread_exit(NULL);
@@ -212,19 +212,20 @@ void Collector::RegisterQuery(const string &queryContent, int queryInterval)
 
 void *Collector::_SubscribeExecutor(void *arg)
 {
-  stringstream queryStream;
+  stringstream queryStringStream;
   while (true)
   {
-    queryStream.str("");
+    queryStringStream.str("");
     boost::property_tree::ptree commandJsonTree;
     commandJsonTree.put("commandType", "query");
     boost::property_tree::ptree queryJsonTree;  //  put all the queries into a property tree
     map<string, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
-
+    pthread_rwlock_rdlock(&monitorProfileRwLock_);
+    fprintf(stdout, "[%s] There are %lu monitor registered.\n", GetCurrentTime().c_str(), monitorProfile_.size());
+    pthread_rwlock_unlock(&monitorProfileRwLock_);
     int wakedQueryCount = 0;
     time_t curTime;
     time(&curTime);
-    fprintf(stdout, "[%s] There are %lu monitor registered.\n", GetCurrentTime().c_str(), monitorProfile_.size());
     for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
     {
       QueryProfile *profile = profileItr->second;
@@ -250,13 +251,12 @@ void *Collector::_SubscribeExecutor(void *arg)
 //      }
 //    }
     commandJsonTree.push_back(make_pair("queries", queryJsonTree));
-    write_json(queryStream, commandJsonTree);
+    write_json(queryStringStream, commandJsonTree);
     if(wakedQueryCount > 0)
     {
-//      const char *queryStr = queryStream.str().c_str();
       char queryStr[65536];
-      strcpy(queryStr, queryStream.str().c_str());
-//      fprintf(stdout, "[%s] Send %s.\n", GetCurrentTime().c_str(), queryStr);
+      strcpy(queryStr, queryStringStream.str().c_str());
+
       pthread_t workerPid;
       pthread_create(&workerPid, &threadAttr_, _SubscribeExecutorWorker, (void *) queryStr);
     }
@@ -269,18 +269,20 @@ void *Collector::_SubscribeExecutor(void *arg)
 
 void *Collector::_SubscribeExecutorWorker(void *arg)
 {
-  const char *queryStream = (const char *)arg;
+
+  const char *queryStr = (const char *)arg;
   struct sockaddr_in monitorAddr;
   bzero(&monitorAddr, sizeof(monitorAddr));
   monitorAddr.sin_family = AF_INET;
   monitorAddr.sin_port = htons(monitorCommandServicePort_);
 
-  vector<MonitorProfile*>::iterator monitorItr = monitorProfile_.begin();
-  for(; monitorItr != monitorProfile_.end(); ++monitorItr)
+//  vector<MonitorProfile*>::iterator monitorItr = monitorProfile_.begin();
+  size_t monitorSize = monitorProfile_.size();
+  for(size_t i = 0; i < monitorSize; ++i)
   {
-    MonitorProfile *monitorProfile = *monitorItr;
+    MonitorProfile &monitorProfile = monitorProfile_[i];
     struct hostent *hostent;
-    hostent = gethostbyname(monitorProfile->machineIP);
+    hostent = gethostbyname(monitorProfile.machineIP.c_str());
     bcopy(hostent->h_addr, &monitorAddr.sin_addr.s_addr, hostent->h_length);
     int monitorSocketFd = socket(AF_INET, SOCK_STREAM, 0);
     if(monitorSocketFd < 0)
@@ -290,32 +292,28 @@ void *Collector::_SubscribeExecutorWorker(void *arg)
     }
     if(connect(monitorSocketFd, (struct sockaddr *)&monitorAddr, sizeof(monitorAddr)) < 0)
     {
-      //  remove monitor that cannot be connected for 10 times
-      fprintf(stderr, "[%s] Cannot connect to monitor %s, failed %d times.\n", GetCurrentTime().c_str(),
-          monitorProfile->machineIP, monitorProfile->communicationFailCount);
+
       pthread_rwlock_wrlock(&monitorProfileRwLock_);
-      ++monitorProfile->communicationFailCount;
-      if(monitorProfile->communicationFailCount > 3)
-      {
-        fprintf(stderr, "[%s] Remove monitor %s from list.\n", GetCurrentTime().c_str(), monitorProfile->machineIP);
-        monitorItr = monitorProfile_.erase(monitorItr);
-        if(monitorItr == monitorProfile_.end())
-        {
-          close(monitorSocketFd);
-          pthread_rwlock_unlock(&monitorProfileRwLock_);
-          break;
-        }
-      }
-      if(monitorItr != monitorProfile_.end())
-      {
-        pthread_rwlock_unlock(&monitorProfileRwLock_);
-      }
+      fprintf(stderr, "[%s] Cannot connect to monitor %s, failed %d times.\n", GetCurrentTime().c_str(), monitorProfile.machineIP.c_str(), ++monitorProfile.communicationFailCount);
+//      //  remove monitor that cannot be connected for 3 times
+//      if(monitorProfile.communicationFailCount >= 3)
+//      {
+//        fprintf(stderr, "[%s] Remove monitor %s from list.\n", GetCurrentTime().c_str(), monitorProfile.machineIP.c_str());
+//        if(monitorProfile_.size() == monitorSize)   //  other thread update the monitor profiles
+//        {
+//          printf("erase\n");
+//          monitorProfile_.erase(monitorProfile_.begin() + i);
+//          --monitorSize;
+//          --i;
+//        }
+//      }
       close(monitorSocketFd);
+      pthread_rwlock_unlock(&monitorProfileRwLock_);
       continue;
     }
 
-    size_t nBytesSent = send(monitorSocketFd, queryStream, strlen(queryStream), 0);
-    if(nBytesSent != strlen(queryStream))
+    size_t nBytesSent = send(monitorSocketFd, queryStr, strlen(queryStr), 0);
+    if(nBytesSent != strlen(queryStr))
     {
       fprintf(stderr, "[%s] Send failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
       close(monitorSocketFd);
@@ -324,7 +322,7 @@ void *Collector::_SubscribeExecutorWorker(void *arg)
     else{
       //  successfully send query to monitor
       pthread_rwlock_wrlock(&monitorProfileRwLock_);
-      monitorProfile->communicationFailCount = 0;
+      monitorProfile.communicationFailCount = 0;
       pthread_rwlock_unlock(&monitorProfileRwLock_);
     }
 
