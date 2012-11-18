@@ -13,6 +13,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/circular_buffer.hpp>
 #include "common.h"
 #include <limits.h>
 
@@ -60,7 +61,8 @@ private:
   size_t bufferSize_;
   pthread_rwlock_t wrLock_;
   pthread_rwlockattr_t wrLockAttr;
-  std::list<SharedPtree> streamBuffer_; //  head is old, tail is new
+//  std::list<SharedPtree> streamBuffer_; //  head is old, tail is new
+  boost::circular_buffer<SharedPtree> streamBuffer_;
 };
 
 }

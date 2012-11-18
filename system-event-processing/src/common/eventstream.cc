@@ -32,7 +32,7 @@ SimpleLockStream::SimpleLockStream()
     fprintf(stderr, "[%s] Initialize read write lock failed.\n", GetCurrentTime().c_str());
     exit(1);
   }
-  this->bufferSize_ = 60;
+  SetStreamBufferSize(60);
 }
 
 SimpleLockStream::~SimpleLockStream()
@@ -44,6 +44,7 @@ SimpleLockStream::~SimpleLockStream()
 void SimpleLockStream::SetStreamBufferSize(size_t bufferSize)
 {
   this->bufferSize_ = bufferSize_;
+  this->streamBuffer_.set_capacity(this->bufferSize_);
 }
 
 size_t SimpleLockStream::GetStreamSize()
@@ -82,8 +83,8 @@ void SimpleLockStream::AddData(boost::property_tree::ptree &tree)
       return;
   }
   pthread_rwlock_wrlock(&this->wrLock_);
-  if(this->streamBuffer_.size() == this->bufferSize_)
-    this->streamBuffer_.pop_front();
+//  if(this->streamBuffer_.size() == this->bufferSize_)
+//    this->streamBuffer_.pop_front();
   this->streamBuffer_.push_back(sharedPtree);
   pthread_rwlock_unlock(&this->wrLock_);
 }
