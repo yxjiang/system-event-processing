@@ -11,7 +11,8 @@ namespace event
 {
 using namespace std;
 
-std::vector<MonitorProfile> Collector::monitorProfile_;
+char Collector::machineIP_[256];
+std::map<string, MonitorProfile> Collector::monitorProfile_;
 pthread_rwlock_t Collector::monitorProfileRwLock_;
 pthread_attr_t Collector::threadAttr_;
 pthread_t Collector::commandServicePid_;
@@ -29,6 +30,16 @@ Collector::Collector(vector<string> vecPeerCollectorIPs, int communicationPort,
     int monitorCommunicationPort)
 {
   monitorCommandServicePort_ = monitorCommunicationPort;
+
+  //  get IP address of current machine
+  char buf[128];
+  gethostname(buf, sizeof(buf));
+  struct hostent *hostAddr;
+  struct in_addr addr;
+  hostAddr = gethostbyname(buf);
+  memcpy(&addr.s_addr, hostAddr->h_addr, sizeof(addr.s_addr));
+  strcpy(machineIP_, inet_ntoa(addr));
+
   //  suppress the protobuf logger
 //  google::protobuf::SetLogHandler(NULL);
   int ret = pthread_attr_init(&threadAttr_);
@@ -74,10 +85,10 @@ void Collector::Run()
   //  start command service to receive commands
   pthread_create(&commandServicePid_, NULL, _CommandService, NULL);
 
+  _JoinIn();
+
 //  pthread_t dataServicePid;
 //  pthread_create(&dataServicePid, &threadAttr, _DataReceiveService, NULL);
-
-  pthread_create(&subscribeExecutorPid_, NULL, _SubscribeExecutor, NULL);
 
 //  pthread_join(dataServicePid, NULL);
   pthread_join(commandServicePid_, NULL);
@@ -161,30 +172,31 @@ void *Collector::_CommandServiceWorker(void *arg)
   if(0 == strcmp(commandType, "registration"))
   {
     const char *machineName = commandTree.get<string>("machineName").c_str();
+    string machineNameStr(machineName);
     MonitorProfile newMonitorProfile;
     newMonitorProfile.machineIP = machineName;
     time_t curTime;
     time(&curTime);
     newMonitorProfile.communicationFailCount = 0;
     fprintf(stdout, "[%s] New registration request from (%s) come.\n", GetCurrentTime().c_str(), newMonitorProfile.machineIP.c_str());
-    bool duplicate = false;
     pthread_rwlock_wrlock(&monitorProfileRwLock_);
-    for(size_t i = 0; i < monitorProfile_.size(); ++i)
+    if(monitorProfile_.find(machineNameStr) != monitorProfile_.end())
     {
-      if(monitorProfile_[i].machineIP.compare(machineName) == 0)
-      {
-        duplicate = true;
-        fprintf(stdout, "[%s] Monitor (%s) reconnected.\n", GetCurrentTime().c_str(), newMonitorProfile.machineIP.c_str());
-        break;
-      }
+      fprintf(stdout, "[%s] Monitor (%s) reconnected.\n", GetCurrentTime().c_str(), newMonitorProfile.machineIP.c_str());
     }
-    if(false == duplicate)
-      monitorProfile_.push_back(newMonitorProfile);
+    else
+    {
+      monitorProfile_.insert(pair<string, MonitorProfile>(machineNameStr, newMonitorProfile));
+    }
 
     size_t curMonitorSize = monitorProfile_.size();
     pthread_rwlock_unlock(&monitorProfileRwLock_);
     fprintf(stdout, "[%s] Register new monitor with name [%s], now size is %lu.\n",
         GetCurrentTime().c_str(), newMonitorProfile.machineIP.c_str(), curMonitorSize);
+  }
+  else if(0 == strcmp(commandType, "dynamic"))
+  {
+
   }
 
   pthread_exit(NULL);
@@ -210,128 +222,152 @@ void Collector::RegisterQuery(const string &queryContent, int queryInterval)
   fprintf(stdout, "[%s] New query registered: %s.\n", GetCurrentTime().c_str(), profile->queryContent);
 }
 
-void *Collector::_SubscribeExecutor(void *arg)
+void Collector::_JoinIn()
 {
-  stringstream queryStringStream;
-  while (true)
+  struct sockaddr_in senderAddr;
+  int heartBeatSocketFd;
+
+  senderAddr.sin_family = AF_INET;
+  senderAddr.sin_addr.s_addr = inet_addr(MULTI_ADDR);
+  senderAddr.sin_port = htons(MULTI_PORT);
+
+  if((heartBeatSocketFd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
   {
-    queryStringStream.str("");
-    boost::property_tree::ptree commandJsonTree;
-    commandJsonTree.put("commandType", "query");
-    boost::property_tree::ptree queryJsonTree;  //  put all the queries into a property tree
-    map<string, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
-    pthread_rwlock_rdlock(&monitorProfileRwLock_);
-    fprintf(stdout, "[%s] There are %lu monitor registered.\n", GetCurrentTime().c_str(), monitorProfile_.size());
-    pthread_rwlock_unlock(&monitorProfileRwLock_);
-    int wakedQueryCount = 0;
-    time_t curTime;
-    time(&curTime);
-    for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
-    {
-      QueryProfile *profile = profileItr->second;
-      if (profile->lastCalled == -1 || (curTime - profile->lastCalled >= profile->queryInterval)) //  time is up
-      {
-        boost::property_tree::ptree separateQueryJsonTree;  //  put each query into a property tree
-        ++wakedQueryCount;
-        pthread_rwlock_wrlock(&registeredQueryProfileRwlock_);
-        profile->lastCalled = curTime;
-        separateQueryJsonTree.put<string>("query-uuid", profile->uuid);
-        separateQueryJsonTree.put<char*>("query-content", profile->queryContent);
-        pthread_rwlock_unlock(&registeredQueryProfileRwlock_);
-        queryJsonTree.push_back(make_pair("", separateQueryJsonTree));
-      }
-    }
-//    fprintf(stdout, "[%s] There are %d queries waked.\n", GetCurrentTime().c_str(), wakedQueryCount);
-//    if(wakedQueryCount == 0)
+    fprintf(stderr, "[%s] Create join in socket failed. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
+    pthread_exit(NULL);
+    exit(1);
+  }
+
+  stringstream ss;
+  ss << "join in: " << machineIP_ << "\n";
+  const char *message = ss.str().c_str();
+
+  sendto(heartBeatSocketFd, message, sizeof(message), 0, (struct sockaddr *)&senderAddr, sizeof(senderAddr));
+}
+
+//void *Collector::_SubscribeExecutor(void *arg)
+//{
+//
+//  stringstream queryStringStream;
+//  while (true)
+//  {
+//    queryStringStream.str("");
+//    boost::property_tree::ptree commandJsonTree;
+//    commandJsonTree.put("commandType", "query");
+//    boost::property_tree::ptree queryJsonTree;  //  put all the queries into a property tree
+//    map<string, QueryProfile*>::iterator profileItr = registeredQueryProfiles_.begin();
+//    pthread_rwlock_rdlock(&monitorProfileRwLock_);
+//    fprintf(stdout, "[%s] There are %lu monitor registered.\n", GetCurrentTime().c_str(), monitorProfile_.size());
+//    pthread_rwlock_unlock(&monitorProfileRwLock_);
+//    int wakedQueryCount = 0;
+//    time_t curTime;
+//    time(&curTime);
+//    for (; profileItr != registeredQueryProfiles_.end(); ++profileItr)
 //    {
-//      for(profileItr = registeredQueryProfiles_.begin(); profileItr != registeredQueryProfiles_.end(); ++profileItr)
+//      QueryProfile *profile = profileItr->second;
+//      if (profile->lastCalled == -1 || (curTime - profile->lastCalled >= profile->queryInterval)) //  time is up
 //      {
-//        fprintf(stdout, "\t[%s] curTime: %lu, lastCalled: %lu, distinct: %lu\n", GetCurrentTime().c_str(),
-//            curTime, profileItr->second->lastCalled, (curTime - profileItr->second->lastCalled));
+//        boost::property_tree::ptree separateQueryJsonTree;  //  put each query into a property tree
+//        ++wakedQueryCount;
+//        pthread_rwlock_wrlock(&registeredQueryProfileRwlock_);
+//        profile->lastCalled = curTime;
+//        separateQueryJsonTree.put<string>("query-uuid", profile->uuid);
+//        separateQueryJsonTree.put<char*>("query-content", profile->queryContent);
+//        pthread_rwlock_unlock(&registeredQueryProfileRwlock_);
+//        queryJsonTree.push_back(make_pair("", separateQueryJsonTree));
 //      }
 //    }
-    commandJsonTree.push_back(make_pair("queries", queryJsonTree));
-    write_json(queryStringStream, commandJsonTree);
-    if(wakedQueryCount > 0)
-    {
-      char queryStr[65536];
-      strcpy(queryStr, queryStringStream.str().c_str());
+////    fprintf(stdout, "[%s] There are %d queries waked.\n", GetCurrentTime().c_str(), wakedQueryCount);
+////    if(wakedQueryCount == 0)
+////    {
+////      for(profileItr = registeredQueryProfiles_.begin(); profileItr != registeredQueryProfiles_.end(); ++profileItr)
+////      {
+////        fprintf(stdout, "\t[%s] curTime: %lu, lastCalled: %lu, distinct: %lu\n", GetCurrentTime().c_str(),
+////            curTime, profileItr->second->lastCalled, (curTime - profileItr->second->lastCalled));
+////      }
+////    }
+//    commandJsonTree.push_back(make_pair("queries", queryJsonTree));
+//    write_json(queryStringStream, commandJsonTree);
+//    if(wakedQueryCount > 0)
+//    {
+//      char queryStr[65536];
+//      strcpy(queryStr, queryStringStream.str().c_str());
+//
+//      pthread_t workerPid;
+//      pthread_create(&workerPid, &threadAttr_, _SubscribeExecutorWorker, (void *) queryStr);
+//    }
+//    ThreadSleep(1, 0);
+//  }
+//
+//  pthread_exit(NULL);
+//  return NULL;
+//}
 
-      pthread_t workerPid;
-      pthread_create(&workerPid, &threadAttr_, _SubscribeExecutorWorker, (void *) queryStr);
-    }
-    ThreadSleep(1, 0);
-  }
-
-  pthread_exit(NULL);
-  return NULL;
-}
-
-void *Collector::_SubscribeExecutorWorker(void *arg)
-{
-
-  const char *queryStr = (const char *)arg;
-  struct sockaddr_in monitorAddr;
-  bzero(&monitorAddr, sizeof(monitorAddr));
-  monitorAddr.sin_family = AF_INET;
-  monitorAddr.sin_port = htons(monitorCommandServicePort_);
-
-//  vector<MonitorProfile*>::iterator monitorItr = monitorProfile_.begin();
-  size_t monitorSize = monitorProfile_.size();
-  for(size_t i = 0; i < monitorSize; ++i)
-  {
-    MonitorProfile &monitorProfile = monitorProfile_[i];
-    struct hostent *hostent;
-    hostent = gethostbyname(monitorProfile.machineIP.c_str());
-    bcopy(hostent->h_addr, &monitorAddr.sin_addr.s_addr, hostent->h_length);
-    int monitorSocketFd = socket(AF_INET, SOCK_STREAM, 0);
-    if(monitorSocketFd < 0)
-    {
-      fprintf(stderr, "[%s] Create socket for sending query failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-      continue;
-    }
-    if(connect(monitorSocketFd, (struct sockaddr *)&monitorAddr, sizeof(monitorAddr)) < 0)
-    {
-
-      pthread_rwlock_wrlock(&monitorProfileRwLock_);
-      fprintf(stderr, "[%s] Cannot connect to monitor %s, failed %d times.\n", GetCurrentTime().c_str(), monitorProfile.machineIP.c_str(), ++monitorProfile.communicationFailCount);
-//      //  remove monitor that cannot be connected for 3 times
-//      if(monitorProfile.communicationFailCount >= 3)
-//      {
-//        fprintf(stderr, "[%s] Remove monitor %s from list.\n", GetCurrentTime().c_str(), monitorProfile.machineIP.c_str());
-//        if(monitorProfile_.size() == monitorSize)   //  other thread update the monitor profiles
-//        {
-//          printf("erase\n");
-//          monitorProfile_.erase(monitorProfile_.begin() + i);
-//          --monitorSize;
-//          --i;
-//        }
-//      }
-      close(monitorSocketFd);
-      pthread_rwlock_unlock(&monitorProfileRwLock_);
-      continue;
-    }
-
-    size_t nBytesSent = send(monitorSocketFd, queryStr, strlen(queryStr), 0);
-    if(nBytesSent != strlen(queryStr))
-    {
-      fprintf(stderr, "[%s] Send failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-      close(monitorSocketFd);
-      continue;
-    }
-    else{
-      //  successfully send query to monitor
-      pthread_rwlock_wrlock(&monitorProfileRwLock_);
-      monitorProfile.communicationFailCount = 0;
-      pthread_rwlock_unlock(&monitorProfileRwLock_);
-    }
-
-    close(monitorSocketFd);
-  }
-
-  pthread_exit(NULL);
-  return NULL;
-}
+//void *Collector::_SubscribeExecutorWorker(void *arg)
+//{
+//
+//  const char *queryStr = (const char *)arg;
+//  struct sockaddr_in monitorAddr;
+//  bzero(&monitorAddr, sizeof(monitorAddr));
+//  monitorAddr.sin_family = AF_INET;
+//  monitorAddr.sin_port = htons(monitorCommandServicePort_);
+//
+////  vector<MonitorProfile*>::iterator monitorItr = monitorProfile_.begin();
+//  size_t monitorSize = monitorProfile_.size();
+//  for(size_t i = 0; i < monitorSize; ++i)
+//  {
+//    MonitorProfile &monitorProfile = monitorProfile_[i];
+//    struct hostent *hostent;
+//    hostent = gethostbyname(monitorProfile.machineIP.c_str());
+//    bcopy(hostent->h_addr, &monitorAddr.sin_addr.s_addr, hostent->h_length);
+//    int monitorSocketFd = socket(AF_INET, SOCK_STREAM, 0);
+//    if(monitorSocketFd < 0)
+//    {
+//      fprintf(stderr, "[%s] Create socket for sending query failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+//      continue;
+//    }
+//    if(connect(monitorSocketFd, (struct sockaddr *)&monitorAddr, sizeof(monitorAddr)) < 0)
+//    {
+//
+//      pthread_rwlock_wrlock(&monitorProfileRwLock_);
+//      fprintf(stderr, "[%s] Cannot connect to monitor %s, failed %d times.\n", GetCurrentTime().c_str(), monitorProfile.machineIP.c_str(), ++monitorProfile.communicationFailCount);
+////      //  remove monitor that cannot be connected for 3 times
+////      if(monitorProfile.communicationFailCount >= 3)
+////      {
+////        fprintf(stderr, "[%s] Remove monitor %s from list.\n", GetCurrentTime().c_str(), monitorProfile.machineIP.c_str());
+////        if(monitorProfile_.size() == monitorSize)   //  other thread update the monitor profiles
+////        {
+////          printf("erase\n");
+////          monitorProfile_.erase(monitorProfile_.begin() + i);
+////          --monitorSize;
+////          --i;
+////        }
+////      }
+//      close(monitorSocketFd);
+//      pthread_rwlock_unlock(&monitorProfileRwLock_);
+//      continue;
+//    }
+//
+//    size_t nBytesSent = send(monitorSocketFd, queryStr, strlen(queryStr), 0);
+//    if(nBytesSent != strlen(queryStr))
+//    {
+//      fprintf(stderr, "[%s] Send failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+//      close(monitorSocketFd);
+//      continue;
+//    }
+//    else{
+//      //  successfully send query to monitor
+//      pthread_rwlock_wrlock(&monitorProfileRwLock_);
+//      monitorProfile.communicationFailCount = 0;
+//      pthread_rwlock_unlock(&monitorProfileRwLock_);
+//    }
+//
+//    close(monitorSocketFd);
+//  }
+//
+//  pthread_exit(NULL);
+//  return NULL;
+//}
 
 //void *Collector::_DataReceiveService(void *arg)
 //{

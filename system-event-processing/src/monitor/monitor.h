@@ -130,14 +130,15 @@ private:
    * Also, the stable meta-data grabbed by crawlers are running running  also sent.
    */
   static void _RegisterToCollectors();
-  /*!
-   * The thread entry function for command service task.
-   */
-  static void *_CommandService(void *arg);
-  /*!
-   * Worker to handle command.
-   */
-  static void *_CommandServiceWorker(void *arg);
+
+//  /*!
+//   * The thread entry function for command service task.
+//   */
+//  static void *_CommandService(void *arg);
+//  /*!
+//   * Worker to handle command.
+//   */
+//  static void *_CommandServiceWorker(void *arg);
 
 //  /*!
 //   * Response to query.

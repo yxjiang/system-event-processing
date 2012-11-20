@@ -54,6 +54,10 @@ public:
 
 protected:
   /*!
+   * Send join in request to multicast address.
+   */
+  void _JoinIn();
+  /*!
    * Receive the commands.
    */
   static void *_CommandService(void *arg);\
@@ -61,19 +65,20 @@ protected:
    * The worker thread to process commands.
    */
   static void *_CommandServiceWorker(void *arg);
-  /*!
-   * Scan the registered query every second, and execute query if necessary
-   */
-  static void *_SubscribeExecutor(void *arg);
+//  /*!
+//   * Scan the registered query every second, and execute query if necessary
+//   */
+//  static void *_SubscribeExecutor(void *arg);
   /*!
    * Send the query to all monitors via multicast.
    */
-  static void *_SubscribeExecutorWorker(void *arg);
-//  static void *_DataReceiveService(void *arg);
+//  static void *_SubscribeExecutorWorker(void *arg);
+  static void *_DataReceiveService(void *arg);
 //  static void *_DataReceiveWorker(void *arg);
 
 private:
-  static std::vector<MonitorProfile> monitorProfile_;
+  static char machineIP_[256];
+  static std::map<std::string, MonitorProfile> monitorProfile_;
   pthread_rwlockattr_t wrLockAttr;
   static pthread_rwlock_t monitorProfileRwLock_;
   static pthread_attr_t threadAttr_;
@@ -84,7 +89,7 @@ private:
   static pthread_t subscribeExecutorPid_; //  the thread that in charge of sending query to monitors
   static std::map<std::string, QueryProfile*> registeredQueryProfiles_;
   static pthread_rwlock_t registeredQueryProfileRwlock_;
-  //  static int dataServicePort_;
+//  static int dataServicePort_;
   //  static bool dataServiceStop_;
 
 };

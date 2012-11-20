@@ -19,6 +19,11 @@
 
 namespace event
 {
+
+/*  multicast address   */
+const static char *MULTI_ADDR = "255.0.0.136";
+/*  multicast port  */
+const static int MULTI_PORT = 32099;
 ///*  Maximum buffer size for UDP packet  */
 const static unsigned int BUFFER_SIZE = 4096;
 /*  sleep interval, 50 millisecond  */

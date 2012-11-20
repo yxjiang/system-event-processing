@@ -63,7 +63,7 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond,
   struct in_addr addr;
   hostAddr = gethostbyname(buf);
   memcpy(&addr.s_addr, hostAddr->h_addr, sizeof(addr.s_addr));
-  strcpy(this->machineName_, inet_ntoa(addr));
+  strcpy(machineName_, inet_ntoa(addr));
   commandServicePort_ = commandServicePort;
   collectorCommandPort_ = collectorCommandPort;
 
@@ -118,8 +118,8 @@ void Monitor::Run()
   //  start to collect meta-data from crawlers and put into stream
   pthread_create(&(this->collectThreadPid_), NULL, _CollectDataFromCrawlers, NULL);
 
-  //  initialize command service
-  pthread_create(&(this->commandServicePid_), NULL, _CommandService, NULL);
+//  //  initialize command service
+//  pthread_create(&(this->commandServicePid_), NULL, _CommandService, NULL);
 
   //  initialize query service
 //  pthread_create(&(this->queryServicePid_), NULL, _QueryService, NULL);
@@ -311,78 +311,78 @@ void Monitor::_RegisterToCollectors()
 
 }
 
-/*!
- * Thread entry function for command service.
- */
-void *Monitor::_CommandService(void *arg)
-{
-  struct sockaddr_in serverAddr; // Server Internet address
-  //  initialize server address
-  bzero(&serverAddr, sizeof(serverAddr));
-  serverAddr.sin_family = AF_INET;
-  serverAddr.sin_addr.s_addr = INADDR_ANY;
-  serverAddr.sin_port = htons(commandServicePort_);
-
-  commandServiceSocketFd_ = socket(AF_INET, SOCK_STREAM, 0);
-  if (commandServiceSocketFd_ < 0)
-  {
-    fprintf(stderr, "[%s] Monitor command service creates socket failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-    exit(1);
-  }
-
-  //  bind socket and address
-  if (bind(commandServiceSocketFd_, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
-  {
-    fprintf(stderr, "[%s] Monitor command service bind port: %d failed. Reason: %s.\n", GetCurrentTime().c_str(), commandServicePort_, strerror(errno));
-    close(commandServiceSocketFd_);
-    exit(1);
-  }
-
-  //  listen on port
-  if (listen(commandServiceSocketFd_, 50) < 0)
-  {
-    fprintf(stderr, "[%s] Monitor command service listen failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-    close(commandServiceSocketFd_);
-    exit(1);
-  }
-  else
-    printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime().c_str(), commandServicePort_);
-
-  while (true)
-  {
-    int connectionSocket = accept(commandServiceSocketFd_, NULL, 0);
-    stringstream recvContent;
-    int recvBytes;
-    char buffer[BUFFER_SIZE];
-    while ((recvBytes = recv(connectionSocket, buffer, BUFFER_SIZE, 0)) > 0)
-    {
-      if (recvBytes < 0)
-        fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
-      recvContent << buffer;
-    }
-    bzero(buffer, sizeof(buffer));
-
-    string contentString = recvContent.str();
-    CommandPackage *package = new CommandPackage;
-    package->content = contentString;
-    pthread_t workerPid;
-    pthread_create(&workerPid, &threadAttr_, _CommandServiceWorker, (void *)package);
-
-    close(connectionSocket);
-  }
-
-  return NULL;
-}
-
-void *Monitor::_CommandServiceWorker(void *arg)
-{
-  CommandPackage *package = (CommandPackage *)arg;
-  fprintf(stdout, "[%s] Receive command %s.\n", GetCurrentTime().c_str(), package->content.c_str());
-
-  delete package;
-  pthread_exit(NULL);
-  return NULL;
-}
+///*!
+// * Thread entry function for command service.
+// */
+//void *Monitor::_CommandService(void *arg)
+//{
+//  struct sockaddr_in serverAddr; // Server Internet address
+//  //  initialize server address
+//  bzero(&serverAddr, sizeof(serverAddr));
+//  serverAddr.sin_family = AF_INET;
+//  serverAddr.sin_addr.s_addr = INADDR_ANY;
+//  serverAddr.sin_port = htons(commandServicePort_);
+//
+//  commandServiceSocketFd_ = socket(AF_INET, SOCK_STREAM, 0);
+//  if (commandServiceSocketFd_ < 0)
+//  {
+//    fprintf(stderr, "[%s] Monitor command service creates socket failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+//    exit(1);
+//  }
+//
+//  //  bind socket and address
+//  if (bind(commandServiceSocketFd_, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
+//  {
+//    fprintf(stderr, "[%s] Monitor command service bind port: %d failed. Reason: %s.\n", GetCurrentTime().c_str(), commandServicePort_, strerror(errno));
+//    close(commandServiceSocketFd_);
+//    exit(1);
+//  }
+//
+//  //  listen on port
+//  if (listen(commandServiceSocketFd_, 50) < 0)
+//  {
+//    fprintf(stderr, "[%s] Monitor command service listen failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+//    close(commandServiceSocketFd_);
+//    exit(1);
+//  }
+//  else
+//    printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime().c_str(), commandServicePort_);
+//
+//  while (true)
+//  {
+//    int connectionSocket = accept(commandServiceSocketFd_, NULL, 0);
+//    stringstream recvContent;
+//    int recvBytes;
+//    char buffer[BUFFER_SIZE];
+//    while ((recvBytes = recv(connectionSocket, buffer, BUFFER_SIZE, 0)) > 0)
+//    {
+//      if (recvBytes < 0)
+//        fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
+//      recvContent << buffer;
+//    }
+//    bzero(buffer, sizeof(buffer));
+//
+//    string contentString = recvContent.str();
+//    CommandPackage *package = new CommandPackage;
+//    package->content = contentString;
+//    pthread_t workerPid;
+//    pthread_create(&workerPid, &threadAttr_, _CommandServiceWorker, (void *)package);
+//
+//    close(connectionSocket);
+//  }
+//
+//  return NULL;
+//}
+//
+//void *Monitor::_CommandServiceWorker(void *arg)
+//{
+//  CommandPackage *package = (CommandPackage *)arg;
+//  fprintf(stdout, "[%s] Receive command %s.\n", GetCurrentTime().c_str(), package->content.c_str());
+//
+//  delete package;
+//  pthread_exit(NULL);
+//  return NULL;
+//}
 //
 ///*!
 // * Send profile data to collectors.
