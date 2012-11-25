@@ -16,7 +16,9 @@ bool Monitor::registrationByMulticast = true;
 string Monitor::machineUuidStr_;
 char Monitor::machineIP_[256];
 map<string, CrawlerStatus> Monitor::crawlers_;
-EventStream Monitor::stream_;
+//EventStream Monitor::stream_;
+ptree Monitor::curPtree_;
+pthread_rwlock_t Monitor::curPtreeRwlock_;
 pthread_attr_t Monitor::threadAttr_;    //  thread attribute
 
 int Monitor::monitoringRate_ = 1;
@@ -66,7 +68,7 @@ Monitor::Monitor(int rateInSecond, int streamSize, int commandServicePort, int c
   commandServicePort_ = commandServicePort;
   collectorCommandPort_ = collectorCommandPort;
 
-  stream_.SetStreamBufferSize(streamSize);
+//  stream_.SetStreamBufferSize(streamSize);
 
   //  initialize collector status
   if(collectorIP.length() != 0)
@@ -91,6 +93,7 @@ Monitor::Monitor(int rateInSecond, int streamSize, int commandServicePort, int c
 
   //  initialize locks
   pthread_rwlock_init(&collectorStatusrwlock_, NULL);
+  pthread_rwlock_init(&curPtreeRwlock_, NULL);
 
 }
 
@@ -235,7 +238,10 @@ void *Monitor::_CollectDataFromCrawlers(void *arg)
       root.add_child(streamType, subNode);
     }
 
-    stream_.AddData(root);
+//    stream_.AddData(root);
+    pthread_rwlock_rdlock(&curPtreeRwlock_);
+    curPtree_ = root;
+    pthread_rwlock_unlock(&curPtreeRwlock_);
 //    fprintf(stdout, "%s\n", _AssembleDynamicMetaData());
     ThreadSleep(monitoringRate_, 0);
   }
@@ -248,10 +254,13 @@ void *Monitor::_CollectDataFromCrawlers(void *arg)
  */
 const char *Monitor::_AssembleDynamicMetaData()
 {
-  boost::property_tree::ptree tree = stream_.GetLatest();
+//  boost::property_tree::ptree tree = stream_.GetLatest();
+  boost::property_tree::ptree tree;
 
   stringstream ss;
-  write_json(ss, tree);
+  pthread_rwlock_rdlock(&curPtreeRwlock_);
+  write_json(ss, curPtree_);
+  pthread_rwlock_unlock(&curPtreeRwlock_);
   string strJson = ss.str();
 
   if (strJson.size() == 0)

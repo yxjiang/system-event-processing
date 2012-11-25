@@ -25,7 +25,7 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/lexical_cast.hpp>
 #include "../common/common.h"
-#include "../common/eventstream.h"
+//#include "../common/eventstream.h"
 //#include "../common/utility.pb.h"
 #include "crawler.h"
 
@@ -53,6 +53,8 @@ typedef struct
 {
   std::string content;
 } CommandPackage;
+
+typedef boost::shared_ptr<boost::property_tree::ptree> SharedPtree;
 
 /*!
  * A monitor is deployed on a single machine.
@@ -189,7 +191,8 @@ private:
   static std::string machineUuidStr_;
   static char machineIP_[256];
   static std::map<std::string, CrawlerStatus> crawlers_;
-  static EventStream stream_;
+  static pthread_rwlock_t curPtreeRwlock_;
+  static boost::property_tree::ptree curPtree_;
   pthread_t collectThreadPid_;
   static pthread_attr_t threadAttr_;
 
