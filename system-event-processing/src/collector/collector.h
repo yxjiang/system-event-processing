@@ -25,6 +25,7 @@
 #include <boost/uuid/uuid_io.hpp>
 //#include "../common/utility.pb.h"
 #include "../common/common.h"
+#include "../common/eventstream.h"
 
 namespace event
 {
@@ -33,6 +34,7 @@ typedef struct
 {
   std::string machineIP;
   int communicationFailCount;
+  EventStream stream;
 } MonitorProfile;
 
 typedef struct
@@ -46,7 +48,7 @@ typedef struct
 class Collector
 {
 public:
-  Collector(std::vector<std::string> vecPeerCollectorIPs, int communicationPort, int dataPort);
+  Collector(int communicationPort, int dataPort);
   ~Collector();
 
   void Run();
@@ -65,6 +67,10 @@ protected:
    * The worker thread to process commands.
    */
   static void *_CommandServiceWorker(void *arg);
+
+  static void *_MulticastCommandListener(void *arg);
+
+  static void _HandleMonitorRegistration(const std::string &monitorIP);
 //  /*!
 //   * Scan the registered query every second, and execute query if necessary
 //   */
@@ -89,6 +95,8 @@ private:
   static pthread_t subscribeExecutorPid_; //  the thread that in charge of sending query to monitors
   static std::map<std::string, QueryProfile*> registeredQueryProfiles_;
   static pthread_rwlock_t registeredQueryProfileRwlock_;
+
+  static pthread_t multicastCommandListenerPid_;
 //  static int dataServicePort_;
   //  static bool dataServiceStop_;
 

@@ -65,6 +65,8 @@ private:
   boost::circular_buffer<SharedPtree> streamBuffer_;
 };
 
+typedef SimpleLockStream EventStream;
+
 }
 
 

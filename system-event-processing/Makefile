@@ -44,9 +44,9 @@ monitor: crawler $(MONITOR_SRC) common eventstream
 	g++ $(INCLUDE) $(FLAG) -c $(MONITOR_SRC) -o $(MONITOR_OBJ)
 	g++ $(INCLUDE) $(FLAG) $(CRAWLER_OBJ) $(STREAM_OBJ) $(MONITOR_OBJ) $(COMMON_OBJ) $(LIBS) -o monitor
 
-collector: $(COLLECTOR_SRC) common 
+collector: $(COLLECTOR_SRC) common eventstream
 	g++ $(INCLUDE) $(FLAG) -c $(COLLECTOR_SRC) -o $(COLLECTOR_OBJ)
-	g++ $(FLAG) $(COLLECTOR_OBJ) $(COMMON_OBJ) $(LIBS) -o collector
+	g++ $(FLAG) $(COLLECTOR_OBJ) $(COMMON_OBJ) $(STREAM_OBJ) $(LIBS) -o collector
 
 common-test: $(COMMON_TEST_SRC) $(COMMON_SRC)
 	g++ $(FLAG) -c $(COMMON_SRC) -o $(COMMON_OBJ)

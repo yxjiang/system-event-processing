@@ -23,10 +23,12 @@ pthread_t Collector::subscribeExecutorPid_;
 map<string, QueryProfile*> Collector::registeredQueryProfiles_;
 pthread_rwlock_t Collector::registeredQueryProfileRwlock_;
 
+pthread_t Collector::multicastCommandListenerPid_;
+
 //int Collector::dataServicePort_ = 32168;    //  default port number to receive data
 //bool Collector::dataServiceStop_ = false;    //  data service is running by default
 
-Collector::Collector(vector<string> vecPeerCollectorIPs, int communicationPort,
+Collector::Collector(int communicationPort,
     int monitorCommunicationPort)
 {
   monitorCommandServicePort_ = monitorCommunicationPort;
@@ -85,6 +87,8 @@ void Collector::Run()
   //  start command service to receive commands
   pthread_create(&commandServicePid_, NULL, _CommandService, NULL);
 
+  pthread_create(&multicastCommandListenerPid_, NULL, _MulticastCommandListener, NULL);
+
   _JoinIn();
 
 //  pthread_t dataServicePid;
@@ -93,6 +97,7 @@ void Collector::Run()
 //  pthread_join(dataServicePid, NULL);
   pthread_join(commandServicePid_, NULL);
   pthread_join(subscribeExecutorPid_, NULL);
+  pthread_join(multicastCommandListenerPid_, NULL);
 }
 
 void *Collector::_CommandService(void *arg)
@@ -203,6 +208,124 @@ void *Collector::_CommandServiceWorker(void *arg)
   return NULL;
 }
 
+void *Collector::_MulticastCommandListener(void *arg)
+{
+  struct sockaddr_in multicastAddress;
+  multicastAddress.sin_addr.s_addr = htons(INADDR_ANY);
+  multicastAddress.sin_family = AF_INET;
+  multicastAddress.sin_port = htons(MULTI_PORT);
+
+  int mutlicastSocketFd;
+  if ((mutlicastSocketFd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+  {
+    fprintf(stderr, "[%s] Error when creating socket for multicast command listener. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
+
+  if (bind(mutlicastSocketFd, (struct sockaddr *) &multicastAddress, sizeof(multicastAddress)) < 0)
+  {
+    fprintf(stderr, "[%s] Error when binding multicast command listener. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
+
+  struct ip_mreq mreq;
+  mreq.imr_multiaddr.s_addr = inet_addr(MULTI_ADDR);
+  mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+  if (setsockopt(mutlicastSocketFd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
+  {
+    fprintf(stderr, "[%s] Error setsockopt. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
+  else
+  {
+    fprintf(stdout, "[%s] Multicast command listener listen on port %d.\n", GetCurrentTime().c_str(), MULTI_PORT);
+  }
+
+  int nbytes;
+  char buf[1024];
+  int addrlen = sizeof(multicastAddress);
+  bzero(buf, strlen(buf));
+  while (true)
+  {
+    if ((nbytes = recvfrom(mutlicastSocketFd, buf, 1024, 0, (struct sockaddr *) &multicastAddress, (socklen_t *) &addrlen)) < 0)
+    {
+      fprintf(stderr, "[%s] Receive multicast command error. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
+    }
+    else
+    {
+      fprintf(stdout, "[%s] [Multicast Command Listener]: Receive command [%s]\n", GetCurrentTime().c_str(), buf);
+      vector<string> vecStr;
+      Split(buf, ' ', vecStr, true);
+      if(vecStr[0].compare("registration-request") == 0)
+      {
+        _HandleMonitorRegistration(vecStr[1]);
+      }
+    }
+    bzero(buf, strlen(buf));
+  }
+
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void Collector::_HandleMonitorRegistration(const string &monitorIP)
+{
+  //  at this version, collector receive all monitors' requests
+
+  MonitorProfile monitorProfile;
+  monitorProfile.machineIP = monitorIP;
+  monitorProfile.communicationFailCount = 0;
+  pthread_rwlock_wrlock(&monitorProfileRwLock_);
+  monitorProfile_.insert(pair<string, MonitorProfile>(monitorIP, monitorProfile));
+  pthread_rwlock_unlock(&monitorProfileRwLock_);
+
+  //  send registration offer to monitor
+  struct sockaddr_in monitorAddr;
+  bzero(&monitorAddr, sizeof(monitorAddr));
+  monitorAddr.sin_family = AF_INET;
+  monitorAddr.sin_port = htons(monitorCommandServicePort_);
+
+  struct hostent *hostent;
+  hostent = gethostbyname(monitorIP.c_str());
+  bcopy(hostent->h_addr, &monitorAddr.sin_addr.s_addr, hostent->h_length);
+
+
+  stringstream ss;
+  ss << "registration-offer " << machineIP_;
+  const char *message = ss.str().c_str();
+  int retry = 0;
+  while (retry++ < 3)
+  {
+    int registrationOfferSocketFd = socket(AF_INET, SOCK_STREAM, 0);
+    if (registrationOfferSocketFd < 0)
+    {
+      fprintf(stderr, "[%s] Create socket for sending registration offer failed. Reason: %s.\n",
+          GetCurrentTime().c_str(), strerror(errno));
+      continue;
+    }
+    if (connect(registrationOfferSocketFd, (struct sockaddr *) &monitorAddr, sizeof(monitorAddr)) < 0)
+    {
+      fprintf(stderr, "[%s] Cannot connect to monitor %s. Reason: %s\n", GetCurrentTime().c_str(), monitorIP.c_str(), strerror(errno));
+      close(registrationOfferSocketFd);
+      continue;
+    }
+
+    size_t nBytesSent = send(registrationOfferSocketFd, message, strlen(message), 0);
+    if (nBytesSent != strlen(message))
+    {
+      fprintf(stderr, "[%s] Send failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      close(registrationOfferSocketFd);
+      continue;
+    }
+    else
+    {
+      fprintf(stdout, "[%s] Send registration offer to %s:%d.\n", GetCurrentTime().c_str(), monitorIP.c_str(), monitorCommandServicePort_);
+      close(registrationOfferSocketFd);
+      return;
+    }
+  }
+
+}
 
 void Collector::RegisterQuery(const string &queryContent, int queryInterval)
 {
@@ -225,13 +348,13 @@ void Collector::RegisterQuery(const string &queryContent, int queryInterval)
 void Collector::_JoinIn()
 {
   struct sockaddr_in senderAddr;
-  int heartBeatSocketFd;
+  int joinInSocketFd;
 
   senderAddr.sin_family = AF_INET;
   senderAddr.sin_addr.s_addr = inet_addr(MULTI_ADDR);
   senderAddr.sin_port = htons(MULTI_PORT);
 
-  if((heartBeatSocketFd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+  if((joinInSocketFd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
   {
     fprintf(stderr, "[%s] Create join in socket failed. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
     pthread_exit(NULL);
@@ -239,10 +362,23 @@ void Collector::_JoinIn()
   }
 
   stringstream ss;
-  ss << "join in: " << machineIP_ << "\n";
+  ss << "collector-join-in " << machineIP_ << "\n";
   const char *message = ss.str().c_str();
 
-  sendto(heartBeatSocketFd, message, sizeof(message), 0, (struct sockaddr *)&senderAddr, sizeof(senderAddr));
+  int retry = 0;
+  while(retry++ < 3)
+  {
+    if(sendto(joinInSocketFd, message, sizeof(message), 0, (struct sockaddr *)&senderAddr, sizeof(senderAddr)) < 0)
+    {
+      fprintf(stderr, "[%s] Send join in information failed. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
+    }
+    else
+    {
+      close(joinInSocketFd);
+      return;
+    }
+  }
+  close(joinInSocketFd);
 }
 
 //void *Collector::_SubscribeExecutor(void *arg)
@@ -469,33 +605,22 @@ int main(int argc, char *argv[])
   int commandPort = 32100;
   int monitorCommandPort = 32101;
 
-  if (argc < 2)
+  if (argc < 1)
   {
-    printf("\nusage: collector ips [command-port] [monitor-cmd-port]\n");
+    printf("\nusage: [command-port] [monitor-cmd-port]\n");
     printf("Options:\n");
-    printf(
-        "\tips\t\t\t\tList of IPs of all the collectors, include the server itself, separated by ','.\n");
-    printf(
-        "\tcommand-port\t\t\tPort number of command service. Default is 32100.\n");
-    printf(
-        "\tmonitor-cmd-port\t\tCommand port for remote monitors. Default is 32101.\n");
+    printf("\tcommand-port\t\t\tPort number of command service. Default is 32100.\n");
+    printf("\tmonitor-cmd-port\t\tCommand port for remote monitors. Default is 32101.\n");
     exit(1);
   }
 
-  vector<string> vecIPs;
   if (argc >= 2)
-  {
-    string ipStr(argv[1]);
-    Split(ipStr, ',', vecIPs, true);
-  }
-
-  if (argc >= 3)
     commandPort = atoi(argv[2]);
 
-  if (argc >= 4)
+  if (argc >= 3)
     monitorCommandPort = atoi(argv[3]);
 
-  Collector collector(vecIPs, commandPort, monitorCommandPort);
+  Collector collector(commandPort, monitorCommandPort);
   string testQuery1 =
       "{'query_uuid': 'uuuu-uuuu', 'query-content': 'select all from all'}";
   string testQuery2 =

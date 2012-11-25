@@ -54,8 +54,6 @@ typedef struct
   std::string content;
 } CommandPackage;
 
-typedef SimpleLockStream EventStream;
-
 /*!
  * A monitor is deployed on a single machine.
  * It periodically grabs the system utilization data and push it to collector.
@@ -71,14 +69,12 @@ public:
    * 1. Wait on commandPort for remote command.
    * 2. Start all crawlers.
    * 3. Register to collectors.
-   * \param     commandPort             The port number for monitor to communicate with collectors.
-   * \param     vecCollectorIps         The list of IPs for all the collectors.
    * \param     rateInSecond            The monitoring rate, default is 1 second.
    * \param     streamSize              The maximal size of the stream.
    * \param     commandPort             The port number for command service.
    * \param     collectorCommandPort    The command port number for remote collectors.
    */
-  Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond, int streamSize,
+  Monitor(int rateInSecond, int streamSize,
       int commandPort, int collectorCommandPort);
 
   /*!
@@ -125,20 +121,27 @@ private:
    * Generate the json and return it as text.
    */
   static const char *_AssembleDynamicMetaData();
+
+  /*!
+   * The thread entry function for command service task.
+   */
+  static void *_CommandService(void *arg);
+  /*!
+   * Worker to handle command.
+   */
+  static void *_CommandServiceWorker(void *arg);
+
+  /*!
+   * Multicast the registration request to multicast address.
+   * The collectors would receive the request.
+   */
+  static void _MultiCastRegistrationRequest();
+
   /*!
    * Register to the collectors by sending the profiles of the monitor.
    * Also, the stable meta-data grabbed by crawlers are running running  also sent.
    */
-  static void _RegisterToCollectors();
-
-//  /*!
-//   * The thread entry function for command service task.
-//   */
-//  static void *_CommandService(void *arg);
-//  /*!
-//   * Worker to handle command.
-//   */
-//  static void *_CommandServiceWorker(void *arg);
+  static void _RegisterToCollectors(const std::string &ip);
 
 //  /*!
 //   * Response to query.
@@ -183,7 +186,7 @@ private:
 
 private:
   static std::string machineUuidStr_;
-  static char machineName_[256];
+  static char machineIP_[256];
   static std::map<std::string, CrawlerStatus> crawlers_;
   static EventStream stream_;
   pthread_t collectThreadPid_;

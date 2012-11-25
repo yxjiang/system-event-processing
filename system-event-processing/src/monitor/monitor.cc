@@ -13,7 +13,7 @@ using namespace std;
 using namespace boost::property_tree;
 
 string Monitor::machineUuidStr_;
-char Monitor::machineName_[256];
+char Monitor::machineIP_[256];
 map<string, CrawlerStatus> Monitor::crawlers_;
 EventStream Monitor::stream_;
 pthread_attr_t Monitor::threadAttr_;    //  thread attribute
@@ -48,10 +48,8 @@ int Monitor::queryServiceSocketFd_;
 
 
 
-Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond,
-    int streamSize, int commandServicePort, int collectorCommandPort)
+Monitor::Monitor(int rateInSecond, int streamSize, int commandServicePort, int collectorCommandPort)
 {
-
   //  initialize fetch data service
   boost::uuids::uuid uuid = boost::uuids::random_generator()();
   machineUuidStr_ = boost::lexical_cast<std::string>(uuid);
@@ -63,15 +61,15 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond,
   struct in_addr addr;
   hostAddr = gethostbyname(buf);
   memcpy(&addr.s_addr, hostAddr->h_addr, sizeof(addr.s_addr));
-  strcpy(machineName_, inet_ntoa(addr));
+  strcpy(machineIP_, inet_ntoa(addr));
   commandServicePort_ = commandServicePort;
   collectorCommandPort_ = collectorCommandPort;
 
   stream_.SetStreamBufferSize(streamSize);
 
-  //  initialize collector status
-  for (size_t i = 0; i < vecCollectorIps.size(); ++i)
-    collectorStatus_.insert(make_pair<string, bool>(vecCollectorIps[i], false));
+//  //  initialize collector status
+//  for (size_t i = 0; i < vecCollectorIps.size(); ++i)
+//    collectorStatus_.insert(make_pair<string, bool>(vecCollectorIps[i], false));
 
   //  initialize thread attribute
   int ret = pthread_attr_init(&threadAttr_);
@@ -86,9 +84,6 @@ Monitor::Monitor(std::vector<std::string> vecCollectorIps, int rateInSecond,
     fprintf(stderr, "[%s] Set thread attribute failed. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
     exit(1);
   }
-
-  //  register to collectors
-  _RegisterToCollectors();
 
   //  initialize locks
   pthread_rwlock_init(&collectorStatusrwlock_, NULL);
@@ -118,16 +113,14 @@ void Monitor::Run()
   //  start to collect meta-data from crawlers and put into stream
   pthread_create(&(this->collectThreadPid_), NULL, _CollectDataFromCrawlers, NULL);
 
-//  //  initialize command service
-//  pthread_create(&(this->commandServicePid_), NULL, _CommandService, NULL);
+  //  initialize command service
+  pthread_create(&(this->commandServicePid_), NULL, _CommandService, NULL);
 
   //  initialize query service
 //  pthread_create(&(this->queryServicePid_), NULL, _QueryService, NULL);
 
-
-//
-//  //  register to collectors
-//  _RegisterToCollectors();
+  //  register to collectors
+  _MultiCastRegistrationRequest();
 
   //  push data periodically to collectors
 
@@ -214,7 +207,7 @@ void *Monitor::_CollectDataFromCrawlers(void *arg)
     map<string, CrawlerStatus>::iterator crawlerItr = crawlers_.begin();
     //  put timestamp of the first crawler
     ObserveData curData = crawlerItr->second.crawler->GetData();
-    root.put<string>("machineName", machineName_); // set sender
+    root.put<string>("machineName", machineIP_); // set sender
     root.put<long int>("timestamp", curData.timestamp); //  set timestamp
     //  iterates all the crawlers to assemble the monitoring meta-data
     for (; crawlerItr != crawlers_.end(); ++crawlerItr)
@@ -261,15 +254,131 @@ const char *Monitor::_AssembleDynamicMetaData()
 //  return metaData.SerializeAsString().c_str();
 }
 
-void Monitor::_RegisterToCollectors()
+/*!
+ * Thread entry function for command service.
+ */
+void *Monitor::_CommandService(void *arg)
 {
-  pthread_rwlock_rdlock(&collectorStatusrwlock_);
-  std::map<std::string, bool> collectorStatus = collectorStatus_;
-  pthread_rwlock_unlock(&collectorStatusrwlock_);
+  struct sockaddr_in serverAddr; // Server Internet address
+  //  initialize server address
+  bzero(&serverAddr, sizeof(serverAddr));
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_addr.s_addr = INADDR_ANY;
+  serverAddr.sin_port = htons(commandServicePort_);
 
+  commandServiceSocketFd_ = socket(AF_INET, SOCK_STREAM, 0);
+  if (commandServiceSocketFd_ < 0)
+  {
+    fprintf(stderr, "[%s] Monitor command service creates socket failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    exit(1);
+  }
+
+  //  bind socket and address
+  if (bind(commandServiceSocketFd_, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
+  {
+    fprintf(stderr, "[%s] Monitor command service bind port: %d failed. Reason: %s.\n", GetCurrentTime().c_str(), commandServicePort_, strerror(errno));
+    close(commandServiceSocketFd_);
+    exit(1);
+  }
+
+  //  listen on port
+  if (listen(commandServiceSocketFd_, 50) < 0)
+  {
+    fprintf(stderr, "[%s] Monitor command service listen failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    close(commandServiceSocketFd_);
+    exit(1);
+  }
+  else
+    printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime().c_str(), commandServicePort_);
+
+  while (true)
+  {
+    int connectionSocket = accept(commandServiceSocketFd_, NULL, 0);
+    stringstream recvContent;
+    int recvBytes;
+    char buffer[BUFFER_SIZE];
+    while ((recvBytes = recv(connectionSocket, buffer, BUFFER_SIZE, 0)) > 0)
+    {
+      if (recvBytes < 0)
+        fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
+      recvContent << buffer;
+    }
+    bzero(buffer, sizeof(buffer));
+    fprintf(stdout, "receive %s\n", recvContent.str().c_str());
+    string contentString = recvContent.str();
+    CommandPackage *package = new CommandPackage;
+    package->content = contentString;
+    pthread_t workerPid;
+    pthread_create(&workerPid, &threadAttr_, _CommandServiceWorker, (void *)package);
+
+    close(connectionSocket);
+  }
+
+  return NULL;
+}
+
+void *Monitor::_CommandServiceWorker(void *arg)
+{
+  CommandPackage *package = (CommandPackage *)arg;
+  fprintf(stdout, "[%s] Receive command %s.\n", GetCurrentTime().c_str(), package->content.c_str());
+  vector<string> vecStr;
+  Split(package->content, ' ', vecStr, true);
+  delete package;
+
+  if(vecStr[0].compare("registration-offer") == 0)
+  {
+  //  add the new collector to collector profile
+    pthread_rwlock_rdlock(&collectorStatusrwlock_);
+    collectorStatus_.insert(pair<string, bool>(vecStr[1], true));
+    pthread_rwlock_unlock(&collectorStatusrwlock_);
+    _RegisterToCollectors(vecStr[1]);
+  }
+
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void Monitor::_MultiCastRegistrationRequest()
+{
+  struct sockaddr_in address;
+  address.sin_family = AF_INET;
+  address.sin_port = htons(MULTI_PORT);
+  address.sin_addr.s_addr = inet_addr(MULTI_ADDR);
+
+  int socketFd;
+  if ((socketFd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+  {
+    fprintf(stderr, "[%s] Socket error when multicast registration request. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+    return;
+  }
+
+  stringstream ss;
+  ss << "registration-request " << machineIP_;
+  const char *message = ss.str().c_str();
+
+  int retry = 0;
+  while (retry++ < 3)   //  retry 3 times
+  {
+    if (sendto(socketFd, message, strlen(message), 0, (struct sockaddr *) &address, sizeof(address)) < 0)
+    {
+      fprintf(stderr, "[%s] Send multicast registration request error. Reason: %s\n", GetCurrentTime().c_str(), strerror(errno));
+      ThreadSleep(1, 0);
+      continue;
+    }
+    else
+    {
+      close(socketFd);
+      return;
+    }
+  }
+  close(socketFd);
+}
+
+void Monitor::_RegisterToCollectors(const string &collectorIP)
+{
   boost::property_tree::ptree commandJson;
   commandJson.put<string>("commandType", "registration");
-  commandJson.put<string>("machineName", machineName_);
+  commandJson.put<string>("machineName", machineIP_);
   stringstream ss;
   write_json(ss, commandJson);
   string strJson = ss.str();
@@ -280,109 +389,39 @@ void Monitor::_RegisterToCollectors()
   serverAddr.sin_port = htons(collectorCommandPort_);
   serverAddr.sin_family = AF_INET;
 
-  std::map<std::string, bool>::iterator collectorStatusItr = collectorStatus.begin();
-  for(; collectorStatusItr != collectorStatus.end(); ++collectorStatusItr)
+  int retry = 0;
+  while(retry++ < 3)
   {
     int connectionSocketFd = socket(AF_INET, SOCK_STREAM, 0);
-    if(connectionSocketFd < 0)
+    if (connectionSocketFd < 0)
     {
-      fprintf(stderr, "[%s] Failed to create socket for monitor registration. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      fprintf(stderr, "[%s] Failed to create socket for monitor registration. Reason: %s.\n", GetCurrentTime().c_str(),
+          strerror(errno));
       continue;
     }
-    serverHostent = gethostbyname(collectorStatusItr->first.c_str());
+    serverHostent = gethostbyname(collectorIP.c_str());
     bcopy(serverHostent->h_addr, &serverAddr.sin_addr.s_addr, serverHostent->h_length);
 
-    if(connect(connectionSocketFd, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
+    if (connect(connectionSocketFd, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
     {
-      fprintf(stderr, "[%s] Failed to connect to collector for registration. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      fprintf(stderr, "[%s] Failed to connect to collector for registration. Reason: %s.\n", GetCurrentTime().c_str(),
+          strerror(errno));
       close(connectionSocketFd);
       continue;
     }
 
-    if(send(connectionSocketFd, strJson.c_str(), strJson.size(), 0) < 0)
+    if (send(connectionSocketFd, strJson.c_str(), strJson.size(), 0) < 0)
     {
-      fprintf(stderr, "[%s] Failed to send registration data to collector. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
+      fprintf(stderr, "[%s] Failed to send registration data to collector. Reason: %s.\n", GetCurrentTime().c_str(),
+          strerror(errno));
       close(connectionSocketFd);
       continue;
     }
     close(connectionSocketFd);
-    fprintf(stdout, "[%s] Register to collector (%s) successfully.\n", GetCurrentTime().c_str(), collectorStatusItr->first.c_str());
+    fprintf(stdout, "[%s] Register to collector (%s) successfully.\n", GetCurrentTime().c_str(), collectorIP.c_str());
+    return;
   }
-
 }
-
-///*!
-// * Thread entry function for command service.
-// */
-//void *Monitor::_CommandService(void *arg)
-//{
-//  struct sockaddr_in serverAddr; // Server Internet address
-//  //  initialize server address
-//  bzero(&serverAddr, sizeof(serverAddr));
-//  serverAddr.sin_family = AF_INET;
-//  serverAddr.sin_addr.s_addr = INADDR_ANY;
-//  serverAddr.sin_port = htons(commandServicePort_);
-//
-//  commandServiceSocketFd_ = socket(AF_INET, SOCK_STREAM, 0);
-//  if (commandServiceSocketFd_ < 0)
-//  {
-//    fprintf(stderr, "[%s] Monitor command service creates socket failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-//    exit(1);
-//  }
-//
-//  //  bind socket and address
-//  if (bind(commandServiceSocketFd_, (struct sockaddr*) &serverAddr, sizeof(serverAddr)) < 0)
-//  {
-//    fprintf(stderr, "[%s] Monitor command service bind port: %d failed. Reason: %s.\n", GetCurrentTime().c_str(), commandServicePort_, strerror(errno));
-//    close(commandServiceSocketFd_);
-//    exit(1);
-//  }
-//
-//  //  listen on port
-//  if (listen(commandServiceSocketFd_, 50) < 0)
-//  {
-//    fprintf(stderr, "[%s] Monitor command service listen failed. Reason: %s.\n", GetCurrentTime().c_str(), strerror(errno));
-//    close(commandServiceSocketFd_);
-//    exit(1);
-//  }
-//  else
-//    printf("[%s] Monitor service listening on port %d...\n", GetCurrentTime().c_str(), commandServicePort_);
-//
-//  while (true)
-//  {
-//    int connectionSocket = accept(commandServiceSocketFd_, NULL, 0);
-//    stringstream recvContent;
-//    int recvBytes;
-//    char buffer[BUFFER_SIZE];
-//    while ((recvBytes = recv(connectionSocket, buffer, BUFFER_SIZE, 0)) > 0)
-//    {
-//      if (recvBytes < 0)
-//        fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
-//      recvContent << buffer;
-//    }
-//    bzero(buffer, sizeof(buffer));
-//
-//    string contentString = recvContent.str();
-//    CommandPackage *package = new CommandPackage;
-//    package->content = contentString;
-//    pthread_t workerPid;
-//    pthread_create(&workerPid, &threadAttr_, _CommandServiceWorker, (void *)package);
-//
-//    close(connectionSocket);
-//  }
-//
-//  return NULL;
-//}
-//
-//void *Monitor::_CommandServiceWorker(void *arg)
-//{
-//  CommandPackage *package = (CommandPackage *)arg;
-//  fprintf(stdout, "[%s] Receive command %s.\n", GetCurrentTime().c_str(), package->content.c_str());
-//
-//  delete package;
-//  pthread_exit(NULL);
-//  return NULL;
-//}
 //
 ///*!
 // * Send profile data to collectors.
@@ -641,54 +680,42 @@ int main(int argc, char *argv[])
   int commandPort = 32101;
   int collectorCommandPort = 32100;
 
-  if (argc == 1 || argc < 2 || argc > 6)
+  if (argc > 6)
   {
-    printf(
-        "\nusage: monitor ips [monitor-rate] [stream-size] [command-port] [collector-cmd-port]\n");
+    printf("\nusage: [monitor-rate] [stream-size] [command-port] [collector-cmd-port]\n");
     printf("Options:\n");
-    printf("\tips\t\t\t\tList of IPs of collectors, separated by ','.\n");
-    printf(
-        "\tmonitor-rate\t\t\tRate of monitoring in second, e.g. 3 indicates monitor the system every 3 seconds.\n");
-    printf(
-        "\tstream-size\t\t\tSize of stream, e.g. 60 indicates store the latest 60 records.\n");
-    printf(
-        "\tcommand-port\t\t\tPort number of command service. Default is 32100.\n");
-    printf(
-        "\tcollector-cmd-port\t\tCommand port of remote collectors. Default is 32100.\n");
+    printf("\tmonitor-rate\t\t\tRate of monitoring in second, e.g. 3 indicates monitor the system every 3 seconds.\n");
+    printf("\tstream-size\t\t\tSize of stream, e.g. 60 indicates store the latest 60 records.\n");
+    printf("\tcommand-port\t\t\tPort number of command service. Default is 32100.\n");
+    printf("\tcollector-cmd-port\t\tCommand port of remote collectors. Default is 32100.\n");
     exit(1);
   }
-  vector<string> vecIPs;
-  if (argc >= 2)
-  {
-    string ipStr(argv[1]);
-    Split(ipStr, ',', vecIPs, true);
-  }
 
-  if (argc >= 3)
+  if (argc >= 2)
   {
     monitorRate = atoi(argv[2]);
     if(monitorRate <= 0)
       monitorRate = 1;
   }
 
-  if(argc >= 4)
+  if(argc >= 3)
   {
     streamSize = atoi(argv[3]);
     if(streamSize < 10)
       streamSize = 10;
   }
 
-  if (argc >= 5)
+  if (argc >= 4)
     commandPort = atoi(argv[3]);
 
-  if (argc >= 6)
+  if (argc >= 5)
     collectorCommandPort = atoi(argv[4]);
 
   CPUCrawler *cpuCrawler = new CPUCrawler;
   cpuCrawler->Init();
   DummyCrawler *dummyCrawler = new DummyCrawler;
   dummyCrawler->Init();
-  Monitor monitor(vecIPs, monitorRate, streamSize, commandPort, collectorCommandPort);
+  Monitor monitor(monitorRate, streamSize, commandPort, collectorCommandPort);
 //  monitor.Attach(dummyCrawler);
   monitor.Attach(cpuCrawler);
   monitor.Run();
