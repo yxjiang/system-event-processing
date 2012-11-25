@@ -179,7 +179,7 @@ void *Collector::_CommandServiceWorker(void *arg)
     const char *machineName = commandTree.get<string>("machineName").c_str();
     string machineNameStr(machineName);
     MonitorProfile newMonitorProfile;
-    newMonitorProfile.machineIP = machineName;
+    newMonitorProfile.machineIP = machineNameStr;
     time_t curTime;
     time(&curTime);
     newMonitorProfile.communicationFailCount = 0;
@@ -275,9 +275,6 @@ void Collector::_HandleMonitorRegistration(const string &monitorIP)
   MonitorProfile monitorProfile;
   monitorProfile.machineIP = monitorIP;
   monitorProfile.communicationFailCount = 0;
-  pthread_rwlock_wrlock(&monitorProfileRwLock_);
-  monitorProfile_.insert(pair<string, MonitorProfile>(monitorIP, monitorProfile));
-  pthread_rwlock_unlock(&monitorProfileRwLock_);
 
   //  send registration offer to monitor
   struct sockaddr_in monitorAddr;
@@ -289,11 +286,10 @@ void Collector::_HandleMonitorRegistration(const string &monitorIP)
   hostent = gethostbyname(monitorIP.c_str());
   bcopy(hostent->h_addr, &monitorAddr.sin_addr.s_addr, hostent->h_length);
 
-
-  stringstream ss;
-  ss << "registration-offer " << machineIP_;
-  const char *message = ss.str().c_str();
+  char message[1024] = "registration-offer ";
+  strcat(message, machineIP_);
   int retry = 0;
+
   while (retry++ < 3)
   {
     int registrationOfferSocketFd = socket(AF_INET, SOCK_STREAM, 0);
@@ -305,7 +301,8 @@ void Collector::_HandleMonitorRegistration(const string &monitorIP)
     }
     if (connect(registrationOfferSocketFd, (struct sockaddr *) &monitorAddr, sizeof(monitorAddr)) < 0)
     {
-      fprintf(stderr, "[%s] Cannot connect to monitor %s. Reason: %s\n", GetCurrentTime().c_str(), monitorIP.c_str(), strerror(errno));
+      fprintf(stderr, "[%s] Cannot connect to monitor %s:%d. Reason: %s\n", GetCurrentTime().c_str(), monitorIP.c_str(), monitorCommandServicePort_,
+          strerror(errno));
       close(registrationOfferSocketFd);
       continue;
     }

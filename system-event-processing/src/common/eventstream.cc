@@ -12,7 +12,7 @@ using namespace std;
 namespace event
 {
 
-SimpleLockStream::SimpleLockStream()
+SimpleLockStream::SimpleLockStream() : streamBuffer_(60)
 {
   int ret = pthread_rwlockattr_init(&this->wrLockAttr);
   if(ret < 0)
@@ -32,7 +32,7 @@ SimpleLockStream::SimpleLockStream()
     fprintf(stderr, "[%s] Initialize read write lock failed.\n", GetCurrentTime().c_str());
     exit(1);
   }
-  SetStreamBufferSize(60);
+//  SetStreamBufferSize(60);
 }
 
 SimpleLockStream::~SimpleLockStream()

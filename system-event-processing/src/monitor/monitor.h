@@ -75,7 +75,7 @@ public:
    * \param     collectorCommandPort    The command port number for remote collectors.
    */
   Monitor(int rateInSecond, int streamSize,
-      int commandPort, int collectorCommandPort);
+      int commandPort, int collectorCommandPort, const std::string &collectorIP);
 
   /*!
    * Deinitialize the monitor.
@@ -185,6 +185,7 @@ private:
 
 
 private:
+  static bool registrationByMulticast;
   static std::string machineUuidStr_;
   static char machineIP_[256];
   static std::map<std::string, CrawlerStatus> crawlers_;

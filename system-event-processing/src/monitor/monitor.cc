@@ -12,6 +12,7 @@ namespace event
 using namespace std;
 using namespace boost::property_tree;
 
+bool Monitor::registrationByMulticast = true;
 string Monitor::machineUuidStr_;
 char Monitor::machineIP_[256];
 map<string, CrawlerStatus> Monitor::crawlers_;
@@ -48,7 +49,7 @@ int Monitor::queryServiceSocketFd_;
 
 
 
-Monitor::Monitor(int rateInSecond, int streamSize, int commandServicePort, int collectorCommandPort)
+Monitor::Monitor(int rateInSecond, int streamSize, int commandServicePort, int collectorCommandPort, const string &collectorIP)
 {
   //  initialize fetch data service
   boost::uuids::uuid uuid = boost::uuids::random_generator()();
@@ -67,9 +68,12 @@ Monitor::Monitor(int rateInSecond, int streamSize, int commandServicePort, int c
 
   stream_.SetStreamBufferSize(streamSize);
 
-//  //  initialize collector status
-//  for (size_t i = 0; i < vecCollectorIps.size(); ++i)
-//    collectorStatus_.insert(make_pair<string, bool>(vecCollectorIps[i], false));
+  //  initialize collector status
+  if(collectorIP.length() != 0)
+  {
+    collectorStatus_.insert(make_pair<string, bool>(collectorIP, false));
+    registrationByMulticast = false;
+  }
 
   //  initialize thread attribute
   int ret = pthread_attr_init(&threadAttr_);
@@ -120,7 +124,16 @@ void Monitor::Run()
 //  pthread_create(&(this->queryServicePid_), NULL, _QueryService, NULL);
 
   //  register to collectors
-  _MultiCastRegistrationRequest();
+  if(registrationByMulticast == true)
+  {
+    _MultiCastRegistrationRequest();
+  }
+  else
+  {
+    string collectorIP = collectorStatus_.begin()->first;
+    fprintf(stdout, "[%s] Register to monitor %s.\n", GetCurrentTime().c_str(), collectorIP.c_str());
+    _RegisterToCollectors(collectorIP);
+  }
 
   //  push data periodically to collectors
 
@@ -297,12 +310,19 @@ void *Monitor::_CommandService(void *arg)
     stringstream recvContent;
     int recvBytes;
     char buffer[BUFFER_SIZE];
+    bool recvSuccess = true;
     while ((recvBytes = recv(connectionSocket, buffer, BUFFER_SIZE, 0)) > 0)
     {
       if (recvBytes < 0)
+      {
         fprintf(stderr, "[%s] Monitor receive command error.\n", GetCurrentTime().c_str());
+        recvSuccess = false;
+        break;
+      }
       recvContent << buffer;
     }
+    if(false == recvSuccess || recvContent.str().length() == 0)
+      continue;
     bzero(buffer, sizeof(buffer));
     fprintf(stdout, "receive %s\n", recvContent.str().c_str());
     string contentString = recvContent.str();
@@ -675,15 +695,17 @@ int main(int argc, char *argv[])
   using namespace std;
   using namespace event;
 
+  string collectorIP;
   int monitorRate = 1;
   int streamSize = 60;
   int commandPort = 32101;
   int collectorCommandPort = 32100;
 
-  if (argc > 6)
+  if (argc < 2 || argc > 6)
   {
-    printf("\nusage: [monitor-rate] [stream-size] [command-port] [collector-cmd-port]\n");
+    printf("\nusage: collectorIP [monitor-rate] [stream-size] [command-port] [collector-cmd-port]\n");
     printf("Options:\n");
+    printf("\tcollectorIP\t\t\tThe collector IP. If the value equals to null, the monitor would leverage multicast for registration.\n");
     printf("\tmonitor-rate\t\t\tRate of monitoring in second, e.g. 3 indicates monitor the system every 3 seconds.\n");
     printf("\tstream-size\t\t\tSize of stream, e.g. 60 indicates store the latest 60 records.\n");
     printf("\tcommand-port\t\t\tPort number of command service. Default is 32100.\n");
@@ -693,29 +715,41 @@ int main(int argc, char *argv[])
 
   if (argc >= 2)
   {
+    if(strcmp(argv[1], "null") == 0 || strcmp(argv[1], "NULL") == 0)
+    {
+      collectorIP = "";
+    }
+    else
+    {
+      collectorIP = argv[1];
+    }
+  }
+
+  if (argc >= 3)
+  {
     monitorRate = atoi(argv[2]);
     if(monitorRate <= 0)
       monitorRate = 1;
   }
 
-  if(argc >= 3)
+  if(argc >= 4)
   {
     streamSize = atoi(argv[3]);
     if(streamSize < 10)
       streamSize = 10;
   }
 
-  if (argc >= 4)
+  if (argc >= 5)
     commandPort = atoi(argv[3]);
 
-  if (argc >= 5)
+  if (argc >= 6)
     collectorCommandPort = atoi(argv[4]);
 
   CPUCrawler *cpuCrawler = new CPUCrawler;
   cpuCrawler->Init();
   DummyCrawler *dummyCrawler = new DummyCrawler;
   dummyCrawler->Init();
-  Monitor monitor(monitorRate, streamSize, commandPort, collectorCommandPort);
+  Monitor monitor(monitorRate, streamSize, commandPort, collectorCommandPort, collectorIP);
 //  monitor.Attach(dummyCrawler);
   monitor.Attach(cpuCrawler);
   monitor.Run();
